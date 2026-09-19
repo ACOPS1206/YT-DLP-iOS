@@ -10,7 +10,7 @@ struct LibraryView: View {
         NavigationStack {
             Group {
                 if model.saved.isEmpty {
-                    ContentUnavailableView("저장한 파일 없음", systemImage: "folder",
+                    ContentUnavailableView(appText("저장한 파일 없음", "No Saved Files"), systemImage: "folder",
                                            description: Text("다운로드한 동영상과 오디오가 여기에 표시됩니다."))
                 } else {
                     List {
@@ -39,10 +39,10 @@ struct LibraryView: View {
                                 .accessibilityLabel("\(item.title) 공유")
                             }
                             .swipeActions {
-                                Button("삭제", systemImage: "trash", role: .destructive) { pendingDelete = item }
+                                Button(appText("삭제", "Delete"), systemImage: "trash", role: .destructive) { pendingDelete = item }
                             }
                             .contextMenu {
-                                ShareLink(items: item.shareURLs) { Label("공유", systemImage: "square.and.arrow.up") }
+                                ShareLink(items: item.shareURLs) { Label(appText("공유", "Share"), systemImage: "square.and.arrow.up") }
                                 Button("삭제", systemImage: "trash", role: .destructive) { pendingDelete = item }
                             }
                         }
@@ -50,16 +50,16 @@ struct LibraryView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("보관함")
+            .navigationTitle(appText("보관함", "Library"))
             .quickLookPreview($previewURL)
             .confirmationDialog("이 파일을 삭제할까요?", isPresented: Binding(
                 get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
             ), titleVisibility: .visible) {
-                Button("파일 삭제", role: .destructive) {
+                Button(appText("파일 삭제", "Delete File"), role: .destructive) {
                     if let item = pendingDelete { model.remove(item) }
                     pendingDelete = nil
                 }
-                Button("취소", role: .cancel) { pendingDelete = nil }
+                Button(appText("취소", "Cancel"), role: .cancel) { pendingDelete = nil }
             }
         }
     }
