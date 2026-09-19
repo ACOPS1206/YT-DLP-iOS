@@ -327,6 +327,10 @@ def run(request_json):
         options = {
             "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
             "logger": Logger(),
+            # The app chooses compatible streams itself and combines them with
+            # AVFoundation. An explicit single-stream selector prevents yt-dlp
+            # from probing for an external ffmpeg executable on iOS.
+            "format": "best",
             "cachedir": False, "socket_timeout": 15,
             "retries": 2, "fragment_retries": 2,
             "js_runtimes": {}, "remote_components": [],
