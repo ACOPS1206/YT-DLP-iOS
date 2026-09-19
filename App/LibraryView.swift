@@ -1,5 +1,5 @@
-import SwiftUI
 import QuickLook
+import SwiftUI
 
 struct LibraryView: View {
     @Bindable var model: DownloadModel
@@ -10,38 +10,46 @@ struct LibraryView: View {
         NavigationStack {
             Group {
                 if model.saved.isEmpty {
-                    ContentUnavailableView("아직 저장한 파일이 없어요", systemImage: "folder",
+                    ContentUnavailableView("저장한 파일 없음", systemImage: "folder",
                                            description: Text("다운로드한 동영상과 오디오가 여기에 표시됩니다."))
                 } else {
                     List {
                         ForEach(model.saved) { item in
-                            HStack(spacing: 14) {
+                            HStack(spacing: 12) {
                                 Button { previewURL = item.url } label: {
-                                    HStack(spacing: 14) {
+                                    HStack(spacing: 12) {
                                         Image(systemName: item.format.symbol)
-                                            .font(.title3).frame(width: 44, height: 44)
-                                            .background(.quaternary, in: .rect(cornerRadius: 14))
-                                        VStack(alignment: .leading, spacing: 5) {
-                                            Text(item.title).font(.subheadline.weight(.medium)).lineLimit(2)
-                                            Text("\(item.format.rawValue) · \(item.sizeLabel)")
-                                                .font(.caption).foregroundStyle(.secondary)
+                                            .font(.title2)
+                                            .foregroundStyle(.tint)
+                                            .frame(width: 32)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(item.title).foregroundStyle(.primary).lineLimit(2)
+                                            Text(item.detailLabel).font(.caption).foregroundStyle(.secondary)
                                         }
                                         Spacer(minLength: 0)
                                     }
-                                }.buttonStyle(.plain)
-                                ShareLink(item: item.url) {
-                                    Image(systemName: "square.and.arrow.up").frame(width: 44, height: 44)
-                                }.buttonStyle(.borderless).accessibilityLabel("\(item.title) 공유")
+                                    .contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+
+                                ShareLink(items: item.shareURLs) {
+                                    Image(systemName: "square.and.arrow.up").frame(width: 32, height: 44)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("\(item.title) 공유")
                             }
-                            .padding(.vertical, 4)
                             .swipeActions {
-                                Button("삭제", role: .destructive) { pendingDelete = item }
+                                Button("삭제", systemImage: "trash", role: .destructive) { pendingDelete = item }
+                            }
+                            .contextMenu {
+                                ShareLink(items: item.shareURLs) { Label("공유", systemImage: "square.and.arrow.up") }
+                                Button("삭제", systemImage: "trash", role: .destructive) { pendingDelete = item }
                             }
                         }
-                    }.scrollContentBackground(.hidden)
+                    }
+                    .listStyle(.insetGrouped)
                 }
             }
-            .background(AppBackground())
             .navigationTitle("보관함")
             .quickLookPreview($previewURL)
             .confirmationDialog("이 파일을 삭제할까요?", isPresented: Binding(
@@ -51,6 +59,7 @@ struct LibraryView: View {
                     if let item = pendingDelete { model.remove(item) }
                     pendingDelete = nil
                 }
+                Button("취소", role: .cancel) { pendingDelete = nil }
             }
         }
     }

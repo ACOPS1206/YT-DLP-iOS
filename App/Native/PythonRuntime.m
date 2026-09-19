@@ -71,9 +71,26 @@ static NSString *errorJSON(NSString *message) {
     NSString *app = [resource stringByAppendingPathComponent:@"app"];
     NSString *stdlib = [home stringByAppendingPathComponent:@"lib/python3.13"];
     NSString *dynload = [stdlib stringByAppendingPathComponent:@"lib-dynload"];
-    NSString *paths = [NSString stringWithFormat:@"%@:%@:%@", stdlib, dynload, app];
+    NSMutableArray<NSString *> *pythonPaths = [NSMutableArray array];
+    NSArray<NSURL *> *supportURLs = [NSFileManager.defaultManager URLsForDirectory:NSApplicationSupportDirectory
+                                                                          inDomains:NSUserDomainMask];
+    NSURL *engineRoot = [[supportURLs firstObject] URLByAppendingPathComponent:@"YTDLPEngine" isDirectory:YES];
+    NSString *marker = [NSString stringWithContentsOfURL:[engineRoot URLByAppendingPathComponent:@"current"]
+                                                encoding:NSUTF8StringEncoding error:nil];
+    marker = [marker stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSCharacterSet *invalidVersion = [[NSCharacterSet characterSetWithCharactersInString:@"0123456789."] invertedSet];
+    if (marker.length > 0 && [marker rangeOfCharacterFromSet:invalidVersion].location == NSNotFound) {
+        NSURL *candidate = [engineRoot URLByAppendingPathComponent:marker isDirectory:YES];
+        if ([NSFileManager.defaultManager fileExistsAtPath:[[candidate URLByAppendingPathComponent:@"yt_dlp/__init__.py"] path]]) {
+            [pythonPaths addObject:candidate.path];
+        }
+    }
+    [pythonPaths addObjectsFromArray:@[stdlib, dynload, app]];
+    NSString *paths = [pythonPaths componentsJoinedByString:@":"];
     setenv("PYTHONHOME", home.UTF8String, 1);
     setenv("PYTHONPATH", paths.UTF8String, 1);
+    setenv("YTDLP_BUNDLED_APP_PATH", app.UTF8String, 1);
+    setenv("YTDLP_UPDATE_ROOT", engineRoot.path.UTF8String, 1);
     setenv("SSL_CERT_FILE", [[app stringByAppendingPathComponent:@"certifi/cacert.pem"] UTF8String], 1);
 
     PyPreConfig pre;
