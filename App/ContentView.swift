@@ -361,6 +361,7 @@ struct ContentView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
+                .foregroundStyle(isEnabled ? Color.black : Color.secondary)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.capsule)
