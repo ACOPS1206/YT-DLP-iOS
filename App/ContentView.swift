@@ -203,7 +203,7 @@ struct ContentView: View {
     private var primaryAction: some View {
         let isEnabled = model.hasValidLink && !model.isBusy
 
-        Button {
+        return Button {
             linkFocused = false
             model.download()
         } label: {
