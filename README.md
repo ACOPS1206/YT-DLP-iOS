@@ -1,6 +1,6 @@
 # yt-dlp GUI · iOS 0.2.0
 
-iOS 26용 SwiftUI 앱(build 4)입니다. `Form`, `List`, `NavigationStack`, 시스템 탭·도구 막대와 SF Symbols를 사용해 표준 iOS 앱 구조를 따릅니다.
+iOS 26용 SwiftUI 앱(build 5)입니다. `Form`, `List`, `NavigationStack`, 시스템 탭·도구 막대와 SF Symbols를 사용해 표준 iOS 앱 구조를 따릅니다.
 
 ## 포함된 기능
 

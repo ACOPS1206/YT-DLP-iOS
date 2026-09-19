@@ -201,20 +201,27 @@ struct ContentView: View {
     }
 
     private var primaryAction: some View {
+        let isEnabled = model.hasValidLink && !model.isBusy
+
         Button {
             linkFocused = false
             model.download()
         } label: {
             Label(model.isBusy ? model.phaseLabel : "다운로드", systemImage: "arrow.down.to.line")
+                .font(.headline)
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .foregroundStyle(isEnabled ? Color(uiColor: .systemBackground) : Color.secondary)
+                .background(
+                    isEnabled ? Color.primary : Color(uiColor: .tertiarySystemFill),
+                    in: Capsule()
+                )
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .disabled(!model.hasValidLink || model.isBusy)
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .accessibilityIdentifier("downloadButton")
         .padding(.horizontal)
         .padding(.vertical, 10)
-        .background(.bar)
     }
 
     private func open(_ url: URL) {
