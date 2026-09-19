@@ -350,8 +350,17 @@ struct ContentView: View {
 
     private var downloadButton: some View {
         let isEnabled = model.hasValidLink && !model.isBusy
-        let activeBackground = yellowActiveDownloadButton ? Color.yellow : Color.primary
-        let activeForeground = yellowActiveDownloadButton ? Color.black : Color(uiColor: .systemBackground)
+        let accentChoice = AccentColorChoice(rawValue: accentColor) ?? .monochrome
+        let activeTint = yellowActiveDownloadButton ? Color.yellow : accentChoice.color
+        let activeForeground: Color = {
+            if yellowActiveDownloadButton || accentChoice == .yellow || accentChoice == .orange {
+                return .black
+            }
+            if accentChoice == .monochrome {
+                return Color(uiColor: .systemBackground)
+            }
+            return .white
+        }()
 
         return VStack(spacing: 10) {
             Button {
@@ -366,11 +375,13 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .foregroundStyle(isEnabled ? activeForeground : Color.secondary)
-                .background(
-                    isEnabled ? activeBackground : Color(uiColor: .tertiarySystemFill),
+                .contentShape(Capsule())
+                .glassEffect(
+                    isEnabled
+                        ? .regular.tint(activeTint).interactive()
+                        : .regular.interactive(),
                     in: Capsule()
                 )
-                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .disabled(!isEnabled)
