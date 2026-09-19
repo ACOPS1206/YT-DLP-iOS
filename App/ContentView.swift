@@ -371,7 +371,12 @@ struct ContentView: View {
         .padding(.vertical, 12)
         .frame(maxWidth: 600)
         .frame(maxWidth: .infinity)
-        .background(.bar)
+        .background {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.bar)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     private func open(_ url: URL) {
