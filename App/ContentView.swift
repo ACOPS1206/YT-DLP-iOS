@@ -12,13 +12,13 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("다운로드", systemImage: "arrow.down", value: .download) {
+            Tab(appText("다운로드", "Download"), systemImage: "arrow.down", value: .download) {
                 downloadView
             }
-            Tab("보관함", systemImage: "folder", value: .library) {
+            Tab(appText("보관함", "Library"), systemImage: "folder", value: .library) {
                 LibraryView(model: model)
             }
-            Tab("로그", systemImage: "text.alignleft", value: .logs) {
+            Tab(appText("로그", "Logs"), systemImage: "text.alignleft", value: .logs) {
                 LogsView(model: model)
             }
         }
@@ -90,13 +90,13 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("설정", systemImage: "gearshape") {
+                    Button(appText("설정", "Settings"), systemImage: "gearshape") {
                         showingSettings = true
                     }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("완료") {
+                    Button(appText("완료", "Done")) {
                         linkFocused = false
                     }
                 }
@@ -109,11 +109,11 @@ struct ContentView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("링크 하나로,\n간편하게 저장.")
+            Text(appText("링크 하나로,\n간편하게 저장.", "Save simply,\nwith one link."))
                 .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("동영상이나 오디오를 iPhone에 담아두세요.")
+            Text(appText("동영상이나 오디오를 iPhone에 담아두세요.", "Save video or audio to your iPhone."))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -122,7 +122,7 @@ struct ContentView: View {
     private var linkInput: some View {
         ContentCard {
             VStack(alignment: .leading, spacing: 16) {
-                Label("동영상 링크", systemImage: "link")
+                Label(appText("동영상 링크", "Video Link"), systemImage: "link")
                     .font(.subheadline.weight(.semibold))
 
                 TextField("https://…", text: $model.link, axis: .vertical)
@@ -148,7 +148,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Button("정보 확인", systemImage: "arrow.up.right") {
+                    Button(appText("정보 확인", "Inspect"), systemImage: "arrow.up.right") {
                         linkFocused = false
                         model.inspect()
                     }
@@ -199,7 +199,7 @@ struct ContentView: View {
 
     private var options: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("저장 옵션")
+            Text(appText("저장 옵션", "Save Options"))
                 .font(.headline)
 
             GlassEffectContainer(spacing: 12) {
@@ -244,7 +244,7 @@ struct ContentView: View {
             } label: {
                 ContentCard {
                     HStack(spacing: 12) {
-                        Label("자막 및 고급 옵션", systemImage: "slider.horizontal.2.square")
+                        Label(appText("자막 및 고급 옵션", "Subtitles & Advanced"), systemImage: "slider.horizontal.2.square")
                             .font(.subheadline)
 
                         Spacer()
@@ -301,7 +301,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Button("취소", role: .cancel) {
+                    Button(appText("취소", "Cancel"), role: .cancel) {
                         model.cancel()
                     }
                     .font(.caption)
@@ -314,7 +314,7 @@ struct ContentView: View {
                         .lineLimit(2)
                 }
 
-                Button("전체 로그 보기", systemImage: "text.alignleft") {
+                Button(appText("전체 로그 보기", "View All Logs"), systemImage: "text.alignleft") {
                     selectedTab = .logs
                 }
                 .font(.caption)
@@ -327,7 +327,7 @@ struct ContentView: View {
     private func savedCard(_ item: SavedMedia) -> some View {
         ContentCard {
             VStack(alignment: .leading, spacing: 12) {
-                Label("저장 완료", systemImage: "checkmark.circle.fill")
+                Label(appText("저장 완료", "Saved"), systemImage: "checkmark.circle.fill")
                     .font(.headline)
 
                 Text(item.title)
@@ -339,7 +339,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
 
                 ShareLink(items: item.shareURLs) {
-                    Label("파일 저장 또는 공유", systemImage: "square.and.arrow.up")
+                    Label(appText("파일 저장 또는 공유", "Save or Share File"), systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.glass)
             }
@@ -356,7 +356,7 @@ struct ContentView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "arrow.down.to.line")
-                    Text(model.isBusy ? model.phaseLabel : "다운로드")
+                    Text(model.isBusy ? model.phaseLabel : appText("다운로드", "Download"))
                 }
                 .font(.headline)
                 .frame(maxWidth: .infinity)
@@ -364,6 +364,7 @@ struct ContentView: View {
                 .foregroundStyle(isEnabled ? Color.black : Color.secondary)
             }
             .buttonStyle(.glassProminent)
+            .tint(isEnabled ? .yellow : .secondary)
             .buttonBorderShape(.capsule)
             .disabled(!isEnabled)
             .accessibilityIdentifier("downloadButton")
