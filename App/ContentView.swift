@@ -8,8 +8,6 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = AppTab.download
     @State private var showingSettings = false
-    @AppStorage("accentColor") private var accentColor = AccentColorChoice.monochrome.rawValue
-    @AppStorage("yellowActiveDownloadButton") private var yellowActiveDownloadButton = true
     @FocusState private var linkFocused: Bool
 
     var body: some View {
@@ -350,17 +348,6 @@ struct ContentView: View {
 
     private var downloadButton: some View {
         let isEnabled = model.hasValidLink && !model.isBusy
-        let accentChoice = AccentColorChoice(rawValue: accentColor) ?? .monochrome
-        let activeTint = yellowActiveDownloadButton ? Color.yellow : accentChoice.color
-        let activeForeground: Color = {
-            if yellowActiveDownloadButton || accentChoice == .yellow || accentChoice == .orange {
-                return .black
-            }
-            if accentChoice == .monochrome {
-                return Color(uiColor: .systemBackground)
-            }
-            return .white
-        }()
 
         return VStack(spacing: 10) {
             Button {
@@ -374,16 +361,10 @@ struct ContentView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .foregroundStyle(isEnabled ? activeForeground : Color.secondary)
-                .contentShape(Capsule())
-                .glassEffect(
-                    isEnabled
-                        ? .regular.tint(activeTint).interactive()
-                        : .regular.interactive(),
-                    in: Capsule()
-                )
+                .foregroundStyle(isEnabled ? Color.black : Color.secondary)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
             .disabled(!isEnabled)
             .accessibilityIdentifier("downloadButton")
         }
