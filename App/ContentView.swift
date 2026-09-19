@@ -30,6 +30,7 @@ struct ContentView: View {
                 linkSection
                 if let info = model.info { previewSection(info) }
                 optionsSection
+                primaryAction
                 if model.isBusy { progressSection }
 
                 if let notice = model.liveActivityNotice {
@@ -58,8 +59,6 @@ struct ContentView: View {
                     Button("완료") { linkFocused = false }
                 }
             }
-            .safeAreaInset(edge: .bottom) { primaryAction }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .onChange(of: model.link) { _, _ in model.invalidatePreview() }
         }
     }
@@ -222,6 +221,9 @@ struct ContentView: View {
         .accessibilityIdentifier("downloadButton")
         .padding(.horizontal)
         .padding(.vertical, 10)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private func open(_ url: URL) {
