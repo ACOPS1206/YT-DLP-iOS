@@ -60,7 +60,8 @@ jobs:
         run: |
           xcodebuild -project YTDLPGUI.xcodeproj -scheme YTDLPGUI \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO build
+            -derivedDataPath build/simulator CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
       - name: Test sharing and Live Activity data on simulator
         run: |
           python3 - <<'PY'
@@ -75,5 +76,6 @@ jobs:
               raise SystemExit('An iOS 26+ simulator runtime is needed for native tests.')
           subprocess.run(['xcodebuild', '-project', 'YTDLPGUI.xcodeproj', '-scheme', 'YTDLPGUI',
                           '-configuration', 'Debug', '-destination', 'platform=iOS Simulator,id=' + candidates[0],
-                          '-derivedDataPath', 'build/simulator', 'CODE_SIGNING_ALLOWED=NO', 'test'], check=True)
+                          '-derivedDataPath', 'build/simulator', 'CODE_SIGNING_ALLOWED=NO',
+                          'ARCHS=arm64', 'ONLY_ACTIVE_ARCH=YES', 'test'], check=True)
           PY

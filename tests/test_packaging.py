@@ -10,6 +10,11 @@ spec.loader.exec_module(module)
 
 
 class PackagingTests(unittest.TestCase):
+    def test_undefined_xcode_arch_uses_native_architecture(self):
+        environment = {"CURRENT_ARCH": "undefined_arch", "ARCHS": "arm64 x86_64",
+                       "NATIVE_ARCH_ACTUAL": "arm64"}
+        self.assertEqual(module.build_architecture(environment), "arm64")
+
     def fixture(self, root):
         project, bundle = root / "project", root / "Example.app"
         framework = project / "Vendor/Python.xcframework"

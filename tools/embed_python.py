@@ -30,6 +30,16 @@ def platform_stdlib(selected, architecture):
     raise RuntimeError(f"Python 3.13 platform library for {architecture} is missing.")
 
 
+def build_architecture(environment):
+    current = environment.get("CURRENT_ARCH")
+    if current and current != "undefined_arch":
+        return current
+    architectures = environment.get("ARCHS", "").split()
+    if len(architectures) == 1:
+        return architectures[0]
+    return environment.get("NATIVE_ARCH_ACTUAL") or architectures[0] if architectures else "arm64"
+
+
 def package(project, bundle, simulator, bundle_id, minimum_os, signing_identity=None,
             architecture="arm64"):
     framework = project / "Vendor/Python.xcframework"
@@ -95,7 +105,7 @@ def main():
         identity = os.environ.get("EXPANDED_CODE_SIGN_IDENTITY") or ("-" if simulator else None)
         if not identity:
             raise SystemExit("A code signing identity is needed for a signed device build.")
-    architecture = os.environ.get("CURRENT_ARCH") or os.environ.get("NATIVE_ARCH_ACTUAL", "arm64")
+    architecture = build_architecture(os.environ)
     frameworks = package(project, bundle, simulator, os.environ["PRODUCT_BUNDLE_IDENTIFIER"],
                          os.environ.get("IPHONEOS_DEPLOYMENT_TARGET", "26.0"), identity,
                          architecture)
