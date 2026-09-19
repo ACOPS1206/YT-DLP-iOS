@@ -20,16 +20,33 @@ def select_slice(framework, simulator):
     return framework / candidates[0]["LibraryIdentifier"]
 
 
-def package(project, bundle, simulator, bundle_id, minimum_os, signing_identity=None):
+def platform_stdlib(selected, architecture):
+    candidate = selected / f"lib-{architecture}" / "python3.13"
+    if candidate.exists():
+        return candidate
+    available = sorted(selected.glob("lib-*/python3.13"))
+    if len(available) == 1:
+        return available[0]
+    raise RuntimeError(f"Python 3.13 platform library for {architecture} is missing.")
+
+
+def package(project, bundle, simulator, bundle_id, minimum_os, signing_identity=None,
+            architecture="arm64"):
     framework = project / "Vendor/Python.xcframework"
     selected = select_slice(framework, simulator)
     library = bundle / "python/lib"
     if library.exists():
         shutil.rmtree(library)
-    shutil.copytree(selected / "lib", library, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # BeeWare keeps the architecture-independent standard library at the
+    # XCFramework root and each platform's extension modules in its slice.
+    common = framework / "lib"
+    if not (common / "python3.13/encodings").exists():
+        raise RuntimeError("Expected shared Python 3.13 standard library is missing.")
+    shutil.copytree(common, library, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     stdlib = library / "python3.13"
-    if not (stdlib / "encodings").exists():
-        raise RuntimeError("Expected Python 3.13 standard library is missing.")
+    shutil.copytree(platform_stdlib(selected, architecture), stdlib,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     frameworks = bundle / "Frameworks"
     frameworks.mkdir(exist_ok=True)
     generated = []
@@ -78,8 +95,10 @@ def main():
         identity = os.environ.get("EXPANDED_CODE_SIGN_IDENTITY") or ("-" if simulator else None)
         if not identity:
             raise SystemExit("A code signing identity is needed for a signed device build.")
+    architecture = os.environ.get("CURRENT_ARCH") or os.environ.get("NATIVE_ARCH_ACTUAL", "arm64")
     frameworks = package(project, bundle, simulator, os.environ["PRODUCT_BUNDLE_IDENTIFIER"],
-                         os.environ.get("IPHONEOS_DEPLOYMENT_TARGET", "26.0"), identity)
+                         os.environ.get("IPHONEOS_DEPLOYMENT_TARGET", "26.0"), identity,
+                         architecture)
     print(f"Packaged {len(frameworks)} Python extension frameworks.")
 
 

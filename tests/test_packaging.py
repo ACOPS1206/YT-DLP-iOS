@@ -14,11 +14,13 @@ class PackagingTests(unittest.TestCase):
         project, bundle = root / "project", root / "Example.app"
         framework = project / "Vendor/Python.xcframework"
         framework.mkdir(parents=True)
+        common = framework / "lib/python3.13/encodings"
+        common.mkdir(parents=True)
+        (common / "__init__.py").write_text("# fixture\n")
         rows = []
         for identifier, simulator in (("ios-arm64", False), ("ios-arm64_x86_64-simulator", True)):
-            base = framework / identifier / "lib/python3.13"
-            (base / "encodings").mkdir(parents=True)
-            (base / "lib-dynload").mkdir()
+            base = framework / identifier / "lib-arm64/python3.13"
+            (base / "lib-dynload").mkdir(parents=True)
             (base / "lib-dynload/_ssl.cpython-313-ios.so").write_bytes(identifier.encode())
             (base / "lib-dynload/_ssl.xcprivacy").write_bytes(plistlib.dumps({"NSPrivacyTracking": False}))
             row = {"LibraryIdentifier": identifier, "SupportedPlatform": "ios"}
@@ -36,6 +38,7 @@ class PackagingTests(unittest.TestCase):
             marker = bundle / "python/lib/python3.13/lib-dynload/_ssl.cpython-313-ios.fwork"
             origin = binary.with_name("_ssl.origin")
             self.assertEqual(binary.read_bytes(), b"ios-arm64")
+            self.assertTrue((bundle / "python/lib/python3.13/encodings/__init__.py").exists())
             self.assertEqual(bundle / marker.read_text().strip(), binary)
             self.assertEqual(bundle / origin.read_text().strip(), marker)
             self.assertEqual(len(list(bundle.rglob("*.so"))), 0)
