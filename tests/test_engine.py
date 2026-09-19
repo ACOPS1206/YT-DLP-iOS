@@ -1,5 +1,7 @@
 import functools
+import hashlib
 import http.server
+import io
 import json
 import pathlib
 import sys
@@ -7,6 +9,7 @@ import tempfile
 import threading
 import types
 import unittest
+import zipfile
 from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -17,7 +20,8 @@ bridge.is_cancelled = lambda: False
 bridge.evaluate_js = lambda script: '{"type":"error","error":"fixture"}'
 sys.modules["_ios_bridge"] = bridge
 
-from downloader import select_streams, validate_url, run
+from downloader import (install_latest_engine, parse_custom_arguments, run,
+                        select_streams, select_subtitle, validate_url)
 
 
 def video(height, *, audio=False, codec="avc1.640028", drm=False):
@@ -58,6 +62,48 @@ class FormatSelectionTests(unittest.TestCase):
         self.assertIsNone(chosen)
         self.assertEqual(sound["ext"], "m4a")
 
+    def test_explicit_format_ids_override_automatic_choice(self):
+        low, high, sound = video(720), video(1080), audio()
+        low["format_id"] = "137-low"
+        sound["format_id"] = "audio-picked"
+        chosen, chosen_audio = select_streams(
+            {"formats": [high, low, sound]}, "MP4", 480, "137-low", "audio-picked")
+        self.assertEqual(chosen["format_id"], "137-low")
+        self.assertEqual(chosen_audio["format_id"], "audio-picked")
+
+    def test_invalid_or_incompatible_explicit_format_is_reported(self):
+        with self.assertRaisesRegex(ValueError, "찾을 수 없습니다"):
+            select_streams({"formats": [video(720), audio()]}, "MP4", 0, "missing", "")
+        av1 = video(1080, codec="av01.0.01M.08")
+        av1["format_id"] = "av1"
+        with self.assertRaisesRegex(ValueError, "저장 가능한"):
+            select_streams({"formats": [av1, audio()]}, "MP4", 0, "av1", "")
+
+    def test_custom_argument_allowlist(self):
+        options = parse_custom_arguments(
+            '--socket-timeout 25 --retries=4 --fragment-retries infinite '
+            '--user-agent "Test Agent" --add-header "X-Test: yes"')
+        self.assertEqual(options["socket_timeout"], 25)
+        self.assertEqual(options["retries"], 4)
+        self.assertEqual(options["fragment_retries"], float("inf"))
+        self.assertEqual(options["http_headers"], {"User-Agent": "Test Agent", "X-Test": "yes"})
+        for unsafe in ("--exec whoami", "--paths /tmp", "https://example.com", "--plugin-dirs x"):
+            with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
+                parse_custom_arguments(unsafe)
+
+    def test_subtitle_prefers_manual_then_requested_language(self):
+        info = {
+            "subtitles": {"en-US": [{"ext": "vtt", "url": "https://example.com/manual"}]},
+            "automatic_captions": {"ko": [{"ext": "vtt", "url": "https://example.com/auto"}]},
+        }
+        language, item, automatic = select_subtitle(info, "ko,en", True)
+        self.assertEqual(language, "ko")
+        self.assertTrue(automatic)
+        self.assertIn("auto", item["url"])
+        language, _, automatic = select_subtitle(info, "en", True)
+        self.assertEqual(language, "en-US")
+        self.assertFalse(automatic)
+
     def test_rejects_file_and_credentials(self):
         for value in ("file:///etc/passwd", "https://name:secret@example.com/video", "not a url"):
             with self.assertRaises(ValueError): validate_url(value)
@@ -66,6 +112,40 @@ class FormatSelectionTests(unittest.TestCase):
 class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
+
+
+class MemoryResponse(io.BytesIO):
+    def __init__(self, value):
+        super().__init__(value)
+        self.headers = {"Content-Length": str(len(value))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
+class EngineUpdaterTests(unittest.TestCase):
+    def test_installs_verified_wheel_and_writes_current_marker(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as wheel:
+            wheel.writestr("yt_dlp/__init__.py", "# fixture")
+            wheel.writestr("yt_dlp/version.py", "__version__ = '2099.01.01'")
+        wheel_data = archive.getvalue()
+        metadata = json.dumps({
+            "info": {"version": "2099.01.01"},
+            "urls": [{"packagetype": "bdist_wheel", "filename": "yt_dlp-2099.01.01-py3-none-any.whl",
+                      "url": "https://example.com/package.whl",
+                      "digests": {"sha256": hashlib.sha256(wheel_data).hexdigest()}}],
+        }).encode()
+        responses = iter((MemoryResponse(metadata), MemoryResponse(wheel_data)))
+        with tempfile.TemporaryDirectory() as root, patch("downloader.urlopen", side_effect=lambda *a, **k: next(responses)):
+            version, changed = install_latest_engine(root, lambda *a, **k: None)
+            self.assertEqual(version, "2099.01.01")
+            self.assertTrue(changed)
+            self.assertEqual((pathlib.Path(root) / "current").read_text(), version)
+            self.assertTrue((pathlib.Path(root) / version / "yt_dlp/__init__.py").is_file())
 
 
 class ActualDownloaderTests(unittest.TestCase):

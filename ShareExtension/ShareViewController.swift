@@ -89,7 +89,6 @@ private struct ShareDownloadView: View {
                 }
                 if let error { Section { Text(error).foregroundStyle(.secondary) } }
             }
-            .tint(.primary)
             .navigationTitle("yt-dlp GUI").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(queued ? "완료" : "닫기", action: finish) } }
             .task {

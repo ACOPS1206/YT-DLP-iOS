@@ -4,9 +4,17 @@ import UIKit
 
 @MainActor @Observable
 final class DownloadModel {
+    static let bundledYTDLPVersion = "2026.08.19"
+
     var link = ""
     var format: SaveFormat = .mp4
     var quality: Quality = .best
+    var downloadSubtitles = false
+    var subtitleLanguages = "ko,en"
+    var allowAutomaticSubtitles = true
+    var preferredVideoFormatID = ""
+    var preferredAudioFormatID = ""
+    var customArguments = ""
     private(set) var info: MediaInfo?
     private(set) var saved = MediaLibrary.load()
     private(set) var lastSaved: SavedMedia?
@@ -17,6 +25,17 @@ final class DownloadModel {
     private(set) var transferLabel = ""
     private(set) var logs = DownloadLogStore.load()
     var liveActivityNotice: String?
+    private(set) var isCheckingEngineUpdate = false
+    private(set) var engineUpdateStatus: String?
+
+    var activeYTDLPVersion: String {
+        let marker = Self.engineRoot.appendingPathComponent("current")
+        guard let value = try? String(contentsOf: marker, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return Self.bundledYTDLPVersion
+        }
+        return value
+    }
 
     @ObservationIgnored private let engine = Engine()
     @ObservationIgnored private let liveActivity = LiveActivityManager()
@@ -37,6 +56,73 @@ final class DownloadModel {
               let host = components.host, !host.isEmpty,
               components.user == nil, components.password == nil else { return false }
         return true
+    }
+
+    var hasAdvancedOptions: Bool {
+        downloadSubtitles || !preferredVideoFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !preferredAudioFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var advancedOptionsSummary: String {
+        var values: [String] = []
+        if downloadSubtitles { values.append("자막") }
+        if !preferredVideoFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !preferredAudioFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            values.append("형식 ID")
+        }
+        if !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("추가 인자") }
+        return values.isEmpty ? "기본값" : values.joined(separator: ", ")
+    }
+
+    func resetAdvancedOptions() {
+        downloadSubtitles = false
+        subtitleLanguages = "ko,en"
+        allowAutomaticSubtitles = true
+        preferredVideoFormatID = ""
+        preferredAudioFormatID = ""
+        customArguments = ""
+    }
+
+    func checkForEngineUpdate() {
+        guard !isCheckingEngineUpdate, !isBusy else { return }
+        isCheckingEngineUpdate = true
+        engineUpdateStatus = "최신 버전을 확인하는 중…"
+        engine.prepare()
+        Task {
+            defer { isCheckingEngineUpdate = false }
+            do {
+                try FileManager.default.createDirectory(at: Self.engineRoot,
+                                                        withIntermediateDirectories: true)
+                let result = try await engine.updateEngine(directory: Self.engineRoot) { [weak self] event in
+                    guard let self, event.phase == "updating" else { return }
+                    if let progress = event.progress {
+                        self.engineUpdateStatus = "업데이트 다운로드 중… \(Int(progress * 100))%"
+                    } else {
+                        self.engineUpdateStatus = "업데이트 다운로드 중…"
+                    }
+                }
+                guard result.ok, let version = result.version else {
+                    throw AppFailure(message: result.error ?? "yt-dlp 업데이트에 실패했습니다.")
+                }
+                engineUpdateStatus = result.updated == true
+                    ? "yt-dlp \(version) 설치 완료 · 앱을 다시 열면 적용됩니다."
+                    : "yt-dlp \(version) · 이미 최신 버전입니다."
+            } catch {
+                engineUpdateStatus = "업데이트 실패: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func restoreBundledEngine() {
+        guard !isBusy, !isCheckingEngineUpdate else { return }
+        try? FileManager.default.removeItem(at: Self.engineRoot.appendingPathComponent("current"))
+        engineUpdateStatus = "번들 버전으로 복구했습니다. 앱을 다시 열면 적용됩니다."
+    }
+
+    private static var engineRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("YTDLPEngine", isDirectory: true)
     }
 
     func invalidatePreview() {
@@ -123,6 +209,12 @@ final class DownloadModel {
         appendLog(operation == "download" ? "다운로드 준비" : "동영상 정보 확인 시작")
         let sourceLink = link.trimmingCharacters(in: .whitespacesAndNewlines)
         let selectedFormat = format; let selectedQuality = quality
+        let selectedSubtitles = downloadSubtitles
+        let selectedSubtitleLanguages = subtitleLanguages
+        let selectedAutomaticSubtitles = allowAutomaticSubtitles
+        let selectedVideoFormatID = preferredVideoFormatID
+        let selectedAudioFormatID = preferredAudioFormatID
+        let selectedCustomArguments = customArguments
         engine.prepare()
         if operation == "download" {
             backgroundAudio.onWarning = { [weak self] message in
@@ -167,7 +259,13 @@ final class DownloadModel {
                 }
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let result = try await engine.run(operation: operation, link: sourceLink, format: selectedFormat,
-                                                  quality: selectedQuality, directory: folder) { [weak self] event in
+                                                  quality: selectedQuality, directory: folder,
+                                                  downloadSubtitles: selectedSubtitles,
+                                                  subtitleLanguages: selectedSubtitleLanguages,
+                                                  allowAutomaticSubtitles: selectedAutomaticSubtitles,
+                                                  preferredVideoFormatID: selectedVideoFormatID,
+                                                  preferredAudioFormatID: selectedAudioFormatID,
+                                                  customArguments: selectedCustomArguments) { [weak self] event in
                     guard let self, self.operationID == id, self.acceptEngineEvents, !self.cancellationRequested else { return }
                     if event.phase == "log" {
                         if let message = event.message { self.appendLog(message, level: event.level ?? "info") }
@@ -209,7 +307,9 @@ final class DownloadModel {
                     output = URL(fileURLWithPath: audio)
                 }
                 try Task.checkCancellation()
-                let item = try MediaLibrary.commit(source: output, title: result.info?.title ?? "다운로드",
+                let item = try MediaLibrary.commit(source: output,
+                                                    subtitle: result.subtitle.map(URL.init(fileURLWithPath:)),
+                                                    title: result.info?.title ?? "다운로드",
                                                     format: selectedFormat, items: saved)
                 saved.insert(item, at: 0); lastSaved = item
                 phaseLabel = "저장 완료"; progress = 1; transferLabel = ""
@@ -237,6 +337,7 @@ final class DownloadModel {
     func remove(_ item: SavedMedia) {
         do {
             try FileManager.default.removeItem(at: item.url)
+            if let subtitleURL = item.subtitleURL { try? FileManager.default.removeItem(at: subtitleURL) }
             saved.removeAll { $0.id == item.id }
             try MediaLibrary.persist(saved)
             if lastSaved?.id == item.id { lastSaved = nil }

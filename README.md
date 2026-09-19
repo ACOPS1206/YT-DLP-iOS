@@ -1,6 +1,6 @@
-# yt-dlp GUI · iOS 0.1.0
+# yt-dlp GUI · iOS 0.2.0
 
-iOS 26용 SwiftUI 앱의 소스 초안(build 2)입니다. Liquid Glass를 버튼, 형식 선택, 시스템 탭과 도구 막대에 적용합니다. 본문에는 읽기 쉬운 일반 배경을 사용합니다.
+iOS 26용 SwiftUI 앱(build 3)입니다. `Form`, `List`, `NavigationStack`, 시스템 탭·도구 막대와 SF Symbols를 사용해 표준 iOS 앱 구조를 따릅니다.
 
 ## 포함된 기능
 
@@ -8,6 +8,10 @@ iOS 26용 SwiftUI 앱의 소스 초안(build 2)입니다. Liquid Glass를 버튼
 - 제목, 제작자, 길이, 썸네일 확인
 - MP4 동영상 / M4A 오디오 선택
 - 최고 화질 / 1080p 이하 / 720p 이하 / 480p 이하
+- 비디오·오디오 형식 ID 직접 지정
+- 언어 우선순위 및 자동 생성 자막 옵션, 미디어와 자막 함께 공유
+- 안전한 허용 목록 기반 추가 yt-dlp 인자
+- 앱 안에서 최신 yt-dlp wheel 원클릭 설치 및 번들 버전 복구
 - 진행률, 속도, 예상 시간, 취소
 - 공유 시트에서 링크·형식·화질을 대기열에 추가하고, 앱을 열면 다운로드 시작
 - Dynamic Island·잠금 화면 Live Activity 진행률과 최근 로그 2줄
@@ -19,11 +23,11 @@ iOS 26용 SwiftUI 앱의 소스 초안(build 2)입니다. Liquid Glass를 버튼
 - YouTube EJS를 Apple JavaScriptCore에서 실행하는 네이티브 어댑터
 - GitHub Actions의 기기 및 시뮬레이터 빌드 설정
 
-`Design/preview.html`은 **화면 디자인을 살펴보는 데모**입니다. 실제 다운로드를 실행하지 않으며 SwiftUI의 Liquid Glass 렌더링을 재현하지 않습니다.
+`Design/preview.html`은 초기 화면 구상을 위한 예전 정적 데모입니다. 현재 SwiftUI 화면과 차이가 있으며 실제 다운로드를 실행하지 않습니다.
 
 ## 현재 검증 상태
 
-Linux 환경에서 Python 엔진과 패키징 테스트 13개가 통과했습니다. 테스트에는 실제 yt-dlp HTTP 다운로드, 영상/오디오 두 파일 검증, 외부 프로세스 호출 방지, 화질 상한과 코덱 선택, 취소, JavaScriptCore 제공자 등록과 번들 EJS 스크립트 검증, 플랫폼별 확장 모듈 배치가 포함됩니다.
+Linux 환경에서 Python 엔진과 패키징 테스트 19개가 통과했습니다. 테스트에는 실제 yt-dlp HTTP 다운로드, 영상/오디오 두 파일 검증, 외부 프로세스 호출 방지, 화질 상한·코덱·형식 ID 선택, 자막 선택, 추가 인자 차단, SHA-256 검증 업데이트, 취소, JavaScriptCore 제공자 등록과 플랫폼별 확장 모듈 배치가 포함됩니다.
 
 **Xcode 컴파일, iPhone 설치, JavaScriptCore에서의 실제 YouTube 챌린지 실행, AVFoundation 병합, 공유 확장, Live Activity, 무음 오디오 백그라운드 실행은 아직 검증하지 못했습니다.** 따라서 설치·다운로드 성공이 확인된 배포판이 아니라 빌드 및 기기 검증을 진행할 소스 버전입니다. 아래 Actions 설정은 포함되어 있으며 여기서 실행된 것은 아닙니다.
 
@@ -64,7 +68,8 @@ bootstrap은 SHA-256으로 고정한 BeeWare Python 3.13 iOS 지원 패키지와
 - Island 축약 화면에는 진행률, 펼친 화면에는 진행 바와 로그 2줄을 표시합니다. 탭하면 전체 로그 화면을 엽니다. 로그 업데이트는 최대 초당 1회이며 진행률이 없으면 대기 표시, 30초 이상 업데이트가 없으면 오래된 상태 안내를 표시합니다. 로그에서 HTTP URL을 가리지만 공유 전 내용을 확인하세요.
 - 무음 오디오를 단순 실행 유지 목적으로 사용하는 설계는 App Store 배포 적합성을 보장하지 않습니다. [Apple 심사 지침 2.5.4](https://developer.apple.com/app-store/review/guidelines/#software-requirements)는 백그라운드 모드를 해당 목적에 맞게 사용하도록 요구합니다.
 - 취소는 다운로드 콜백과 단계 사이에서 확인합니다. 응답 대기 또는 JavaScript 실행 중에는 즉시 중단되지 않을 수 있습니다. 파일 결합 단계에서 취소하면 결과를 보관함에 넣지 않습니다.
-- 엔진은 앱에 번들됩니다. 데스크톱의 `yt-dlp -U` 방식 대신 앱을 다시 빌드해 업데이트합니다.
+- 설정의 업데이트 버튼은 PyPI 최신 wheel을 내려받아 게시된 SHA-256과 대조한 뒤 `Application Support/YTDLPEngine/<버전>`에 원자적으로 설치합니다. 다음 앱 실행에서 이 패키지를 번들보다 먼저 불러옵니다. 로드에 실패하면 활성 표식을 제거하고 번들 버전으로 되돌아갑니다.
+- 추가 인자는 셸로 전달하지 않습니다. `--socket-timeout`, `--retries`, `--fragment-retries`, `--user-agent`, `--referer`, `--add-header`만 yt-dlp Python API 옵션으로 변환합니다.
 
 ## 테스트
 
@@ -90,6 +95,8 @@ Actions에는 iOS 26+ 시뮬레이터를 골라 XCTest 5개를 실행하는 단�
 9. Dynamic Island 축약·확장 및 잠금 화면 진행률·로그, Island 탭으로 로그 열기
 10. 화면 잠금 및 다른 앱 전환 후 실제 파일 증가 확인, 완료·실패·취소 시 오디오 세션 종료
 11. 다른 음악 앱과 동시 실행, 통화 인터럽트·재개, 설정 끄기, 앱 강제 종료 시 오래된 Live Activity 안내
+12. 설정에서 yt-dlp 업데이트 → 앱 완전 종료·재실행 → 현재 버전 확인 → 번들 버전 복구
+13. 자막 언어 우선순위, 자동 자막 끄기, 형식 ID 지정 및 허용되지 않은 추가 인자 오류 확인
 
 ## 구조
 
@@ -113,7 +120,7 @@ Actions에는 iOS 26+ 시뮬레이터를 골라 XCTest 5개를 실행하는 단�
 
 앱 코드에는 MIT 라이선스를 적용합니다. 의존성의 라이선스는 각각 유지됩니다. yt-dlp와 EJS는 Unlicense, CPython은 PSF 라이선스, BeeWare 지원 도구는 해당 프로젝트의 라이선스, certifi의 인증서 번들은 MPL 2.0 등 자체 라이선스를 따릅니다. bootstrap이 의존성의 라이선스와 패키지 메타데이터를 보존하며, 배포 시 Python 지원 패키지의 OpenSSL 등 추가 의존성 고지도 확인해야 합니다.
 
-- [SwiftUI Liquid Glass](https://developer.apple.com/documentation/swiftui/applying-liquid-glass-to-custom-views)
+- [Apple Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines/)
 - [Python 3.13 on iOS와 공식 빌드 단계](https://docs.python.org/3.13/using/ios.html)
 - [BeeWare Python Apple Support](https://github.com/beeware/Python-Apple-support)
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)

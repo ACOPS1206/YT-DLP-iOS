@@ -47,7 +47,9 @@ struct EngineResult: Decodable {
     let info: MediaInfo?
     let video: String?
     let audio: String?
+    let subtitle: String?
     let version: String?
+    let updated: Bool?
 }
 
 struct EngineEvent: Decodable {
@@ -78,8 +80,19 @@ struct SavedMedia: Identifiable, Codable {
     let format: SaveFormat
     let createdAt: Date
     let byteCount: Int64
+    let subtitleFilename: String?
     var url: URL { MediaLibrary.documents.appendingPathComponent(filename) }
+    var subtitleURL: URL? {
+        guard let subtitleFilename else { return nil }
+        let url = MediaLibrary.documents.appendingPathComponent(subtitleFilename)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+    var shareURLs: [URL] { [url] + (subtitleURL.map { [$0] } ?? []) }
     var sizeLabel: String { ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file) }
+    var detailLabel: String {
+        [format.rawValue, sizeLabel, subtitleURL == nil ? nil : "자막 포함"]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
 }
 
 struct AppFailure: LocalizedError {
