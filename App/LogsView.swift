@@ -7,7 +7,7 @@ struct LogsView: View {
         NavigationStack {
             Group {
                 if model.logs.isEmpty {
-                    ContentUnavailableView("로그 없음", systemImage: "text.alignleft",
+                    ContentUnavailableView(appText("로그 없음", "No Logs"), systemImage: "text.alignleft",
                                            description: Text("다운로드를 시작하면 진행 로그가 표시됩니다."))
                 } else {
                     List {
@@ -35,11 +35,11 @@ struct LogsView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("로그")
+            .navigationTitle(appText("로그", "Logs"))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: sharedLog) {
-                        Label("로그 공유", systemImage: "square.and.arrow.up")
+                        Label(appText("로그 공유", "Share Logs"), systemImage: "square.and.arrow.up")
                     }
                     .disabled(model.logs.isEmpty)
                 }
