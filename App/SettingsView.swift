@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("backgroundAudioKeepAlive") private var backgroundAudioKeepAlive = true
     @AppStorage("accentColor") private var accentColor = AccentColorChoice.monochrome.rawValue
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.system.rawValue
+    @AppStorage("yellowActiveDownloadButton") private var yellowActiveDownloadButton = true
     @Bindable var model: DownloadModel
 
     var body: some View {
@@ -32,6 +33,17 @@ struct SettingsView: View {
                     Picker(appText("언어", "Language"), selection: $appLanguage) {
                         ForEach(AppLanguage.allCases) { language in
                             Text(language.title).tag(language.rawValue)
+                        }
+                    }
+
+                    Toggle(isOn: $yellowActiveDownloadButton) {
+                        HStack(spacing: 8) {
+                            Text(appText("활성 다운로드 버튼을 노란색으로", "Yellow Active Download Button"))
+                            Text(appText("베타", "BETA"))
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.yellow.opacity(0.22), in: Capsule())
                         }
                     }
                 }
