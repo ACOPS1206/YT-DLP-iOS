@@ -1,0 +1,88 @@
+import Foundation
+import SwiftUI
+
+enum SaveFormat: String, CaseIterable, Identifiable, Codable {
+    case mp4 = "MP4", m4a = "M4A"
+    var id: String { rawValue }
+    var symbol: String { self == .mp4 ? "video" : "waveform" }
+    var title: String { self == .mp4 ? "동영상" : "오디오" }
+    var detail: String { self == .mp4 ? "영상과 소리 함께" : "소리만 저장" }
+}
+
+enum Quality: Int, CaseIterable, Identifiable, Codable {
+    case best = 0, p1080 = 1080, p720 = 720, p480 = 480
+    var id: Int { rawValue }
+    var title: String { self == .best ? "최고 화질" : "\(rawValue)p 이하" }
+}
+
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self { case .system: "시스템 설정"; case .light: "라이트"; case .dark: "다크" }
+    }
+    var scheme: ColorScheme? {
+        switch self { case .system: nil; case .light: .light; case .dark: .dark }
+    }
+}
+
+struct MediaInfo: Decodable, Equatable {
+    let title: String
+    let author: String
+    let duration: Double?
+    let thumbnail: String?
+    var durationLabel: String {
+        guard let duration, duration.isFinite else { return "길이 정보 없음" }
+        let seconds = max(0, Int(duration))
+        return seconds >= 3600
+            ? String(format: "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+            : String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
+struct EngineResult: Decodable {
+    let ok: Bool
+    let error: String?
+    let cancelled: Bool?
+    let info: MediaInfo?
+    let video: String?
+    let audio: String?
+    let version: String?
+}
+
+struct EngineEvent: Decodable {
+    let phase: String
+    let progress: Double?
+    let speed: Double?
+    let eta: Double?
+    let message: String?
+    let level: String?
+    let info: MediaInfo?
+}
+
+struct DownloadLogEntry: Codable, Identifiable {
+    let id: UUID
+    let date: Date
+    let message: String
+    let level: String
+
+    init(message: String, level: String = "info") {
+        id = UUID(); date = .now; self.message = message; self.level = level
+    }
+}
+
+struct SavedMedia: Identifiable, Codable {
+    let id: UUID
+    let title: String
+    let filename: String
+    let format: SaveFormat
+    let createdAt: Date
+    let byteCount: Int64
+    var url: URL { MediaLibrary.documents.appendingPathComponent(filename) }
+    var sizeLabel: String { ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file) }
+}
+
+struct AppFailure: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}

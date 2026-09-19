@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>yt-dlp GUI · iOS 디자인 미리보기</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#e9e9eb;color:#171719;font-family:-apple-system,BlinkMacSystemFont,"Noto Sans CJK KR",sans-serif;-webkit-font-smoothing:antialiased}button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.42}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #8b8b91;outline-offset:4px}.page{max-width:940px;margin:0 auto;padding:38px 24px 32px}.page-header{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 28px}.wordmark{font-weight:650;font-size:20px;letter-spacing:-.7px}.caption{font-size:12px;color:#65656a;margin-top:6px}.demo-label{font-size:12px;padding:8px 12px;background:#d9d9dd;border-radius:30px}.screens{display:grid;grid-template-columns:1fr 1fr;gap:38px;align-items:start}.screen-label{font-size:12px;letter-spacing:1.7px;color:#6d6d72;margin:0 0 13px 3px}.phone{--bg:#f4f4f6;--fg:#151517;--muted:#737378;--surface:#fff;--line:#e7e7eb;--glass:rgba(255,255,255,.57);--glass-edge:rgba(255,255,255,.95);--glass-selected:rgba(226,226,231,.78);--accent:#171719;--accent-text:#fff;color:var(--fg);background:var(--bg);border-radius:40px;overflow:hidden;box-shadow:0 22px 45px #0000000d,0 2px 5px #00000009;border:1px solid #ffffffd9;position:relative}.phone.dark{--bg:#080809;--fg:#f5f5f7;--muted:#a0a0a7;--surface:#1b1b1e;--line:#333338;--glass:rgba(45,45,50,.7);--glass-edge:rgba(132,132,140,.4);--glass-selected:rgba(81,81,89,.62);--accent:#efeff2;--accent-text:#111113;border-color:#35353a;box-shadow:0 22px 45px #00000025,0 2px 5px #00000020}.status{display:flex;align-items:center;justify-content:space-between;padding:20px 25px 8px;font-size:14px;font-weight:600;position:relative}.island{height:24px;width:92px;border-radius:20px;background:#000;position:absolute;left:50%;transform:translateX(-50%);top:15px}.status-icons{display:flex;gap:6px;align-items:center}.status-icons svg{width:16px;height:16px}.nav{display:flex;align-items:center;justify-content:center;padding:16px 22px 11px;position:relative;font-size:15px;font-weight:600;min-height:53px}.settings{position:absolute;right:21px;top:7px;width:40px;height:40px;border-radius:50%;border:1px solid var(--glass-edge);background:var(--glass);color:var(--fg);box-shadow:0 2px 7px #00000006;display:grid;place-items:center;backdrop-filter:blur(18px)}.settings svg{width:19px;height:19px}.main{padding:17px 22px 24px;background:radial-gradient(ellipse at 10% 30%,color-mix(in srgb,var(--fg) 4%,transparent),transparent 60%)}h1{font-size:31px;line-height:1.27;letter-spacing:-1.5px;margin:7px 0 10px;font-weight:720}p.lead{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 26px}.content-card{background:var(--surface);padding:18px;border-radius:25px}.label{font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px}.label svg{width:16px;height:16px}.url{border:0;background:none;width:100%;color:var(--fg);font-size:15px;outline-offset:0;margin:18px 0 17px;padding:0;min-width:0}.url::placeholder{color:var(--muted)}.link-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}.glass-btn{color:var(--fg);background:var(--glass);border:1px solid var(--glass-edge);border-radius:22px;padding:10px 12px;box-shadow:inset 0 .8px 0 #ffffff20,0 1px 5px #00000008;backdrop-filter:blur(16px);font-size:12px;display:flex;align-items:center;gap:6px;white-space:nowrap;min-height:38px}.glass-btn svg{width:14px;height:14px}.section-title{font-weight:650;font-size:15px;margin:24px 0 14px}.formats{display:flex;gap:12px}.format{color:var(--fg);width:50%;padding:16px;text-align:left;border-radius:24px;min-height:118px;background:var(--glass);border:1px solid var(--glass-edge);box-shadow:inset 0 1px 0 #ffffff20,0 5px 15px #00000005;backdrop-filter:blur(20px)}.format[aria-pressed=true]{background:var(--glass-selected);box-shadow:inset 0 1px 0 #ffffff35,0 5px 14px #00000006}.format-icons{display:flex;align-items:center;justify-content:space-between;margin-bottom:17px}.format-icons svg{width:19px;height:19px}.check{border:1.2px solid var(--muted);border-radius:50%;width:17px;height:17px;display:grid;place-items:center;font-size:11px;color:transparent}.format[aria-pressed=true] .check{background:var(--fg);color:var(--bg);border-color:var(--fg)}.format-title{font-size:14px;font-weight:600}.format-type{font-size:11px;color:var(--muted);margin-top:4px}.quality-card{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:17px 18px;margin-top:13px;border-radius:22px}.quality-card select{max-width:55%;font-size:12px;color:var(--muted);background:none;border:none;padding:8px 1px;min-height:36px}.note{font-size:11px;color:var(--muted);line-height:1.6;margin:13px 2px 0;min-height:35px}.download-area{padding:13px 23px 15px;background:color-mix(in srgb,var(--bg) 86%,transparent);backdrop-filter:blur(20px);border-top:1px solid color-mix(in srgb,var(--line) 50%,transparent)}.download{background:var(--accent);color:var(--accent-text);border:none;box-shadow:inset 0 1px 1px #ffffff40,0 3px 12px #0000000a;width:100%;border-radius:30px;min-height:52px;display:flex;align-items:center;justify-content:center;gap:9px;font-size:15px;font-weight:600}.download svg{width:18px;height:18px}.bottom{display:flex;justify-content:center;padding:0 23px 23px;background:var(--bg)}.tabbar{display:flex;padding:5px;width:235px;gap:5px;background:var(--glass);border:1px solid var(--glass-edge);border-radius:34px;box-shadow:inset 0 1px 0 #ffffff22,0 3px 16px #00000006;backdrop-filter:blur(24px)}.tab{color:var(--muted);border:0;border-radius:28px;background:none;flex:1;padding:8px 9px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px;font-size:10px;min-height:51px}.tab svg{width:18px;height:18px}.tab[aria-selected=true]{background:var(--glass-selected);color:var(--fg)}.home{height:4px;position:absolute;bottom:9px;left:50%;transform:translateX(-50%);width:112px;background:var(--fg);border-radius:5px;opacity:.86}.alert{font-size:12px;color:var(--muted);line-height:1.6;margin-top:14px}.library{min-height:514px;display:grid;place-items:center;text-align:center;padding:28px 12px}.empty-icon{font-size:34px;color:var(--muted)}.empty-title{font-size:18px;font-weight:650;letter-spacing:-.5px;margin:18px 0 7px}.empty-text{font-size:12px;color:var(--muted);line-height:1.6}.footnote{font-size:11px;color:#717178;margin:27px 0 0;text-align:center}.phone svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}.library svg{width:48px;height:48px;color:var(--muted)}.screen-label-dark{color:#6d6d72}[hidden]{display:none!important}@media(max-width:660px){.page{padding:25px 18px}.screens{grid-template-columns:1fr;max-width:390px;margin:auto;gap:26px}.page-header{max-width:390px;margin:0 auto 25px}.demo-label{display:none}}@media(prefers-reduced-motion:no-preference){button{transition:background .15s ease,opacity .15s ease}}
+</style>
+</head>
+<body>
+<div class="page">
+ <header class="page-header"><div><div class="wordmark">yt-dlp GUI</div><div class="caption">iOS · Liquid Glass</div></div><div class="demo-label">디자인 미리보기</div></header>
+ <div class="screens" id="screens"></div>
+ <p class="footnote">화면 디자인 데모 · 실제 다운로드는 SwiftUI 앱에서 처리합니다.</p>
+</div>
+<template id="phone-template">
+<section>
+ <div class="screen-label"></div>
+ <div class="phone">
+  <div class="status"><span>9:41</span><span class="island" aria-hidden="true"></span><span class="status-icons" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M3 14v2m4-5v5m4-8v8m4-11v11" stroke-width="2.5"/></svg><svg viewBox="0 0 20 20"><path d="M2 7c4-4 12-4 16 0M5 10c3-3 7-3 10 0M8 13c1-1 3-1 4 0"/><circle cx="10" cy="16" r=".7"/></svg><svg viewBox="0 0 24 16"><rect x="1" y="3" width="19" height="10" rx="3"/><path d="M23 7v2M4 6h13v4H4z" fill="currentColor" stroke="none"/></svg></span></div>
+  <div class="nav"><span class="nav-title">yt-dlp GUI</span><button class="settings" aria-label="화면 모드 전환"><svg viewBox="0 0 24 24"><path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-2 1-3 3-1v-4l-3-1-1-3-3 1z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+  <main class="main">
+   <div class="download-panel">
+    <h1>링크 하나로,<br>간편하게 저장.</h1>
+    <p class="lead">동영상이나 오디오를 iPhone에 담아두세요.</p>
+    <div class="content-card">
+     <label class="label url-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 15 6-6m-4-3 2-2a5 5 0 0 1 7 7l-2 2M13 18l-2 2a5 5 0 0 1-7-7l2-2"/></svg>동영상 링크</label>
+     <input class="url" type="url" placeholder="https://…" aria-label="동영상 링크" spellcheck="false" autocomplete="off">
+     <div class="link-actions">
+      <button class="glass-btn paste"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 3h6v4H9zM9 12h6M9 16h6"/></svg>붙여넣기</button>
+      <button class="glass-btn inspect" disabled>정보 확인<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 17 10-10M7 7h10v10"/></svg></button>
+     </div>
+    </div>
+    <div class="section-title">저장 옵션</div>
+    <div class="formats" role="group" aria-label="저장 형식">
+     <button class="format" data-format="MP4" aria-pressed="true"><div class="format-icons"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3"/></svg><span class="check" aria-hidden="true">✓</span></div><div class="format-title">동영상</div><div class="format-type">MP4</div></button>
+     <button class="format" data-format="M4A" aria-pressed="false"><div class="format-icons"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4m4-7v10m5-14v18m5-15v12m4-8v4"/></svg><span class="check" aria-hidden="true">✓</span></div><div class="format-title">오디오</div><div class="format-type">M4A</div></button>
+    </div>
+    <div class="content-card quality-card"><span class="label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h6m4 0h6M4 17h10m4 0h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/></svg><span class="quality-label">화질</span></span><select aria-label="화질"><option>최고 화질</option><option>1080p 이하</option><option>720p 이하</option><option>480p 이하</option></select><span class="audio-quality" hidden>원본 AAC</span></div>
+    <p class="note">선택한 화질 이하의 호환 가능한 원본을 저장합니다.</p>
+    <div class="alert" role="status" aria-live="polite" hidden></div>
+   </div>
+   <div class="library" hidden><div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><div class="empty-title">아직 저장한 파일이 없어요</div><div class="empty-text">다운로드한 동영상과 오디오가<br>여기에 표시됩니다.</div></div></div>
+  </main>
+  <div class="download-area"><button class="download" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 18v3h16v-3"/></svg>다운로드</button></div>
+  <div class="bottom"><div class="tabbar" role="tablist" aria-label="화면"><button class="tab" data-tab="download" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg>다운로드</button><button class="tab" data-tab="library" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>보관함</button></div></div>
+  <div class="home" aria-hidden="true"></div>
+ </div>
+</section>
+</template>
+<script>
+const screens=document.getElementById('screens');
+const template=document.getElementById('phone-template');
+['light','dark'].forEach((theme,index)=>{
+ const section=template.content.cloneNode(true);screens.append(section);
+ const root=screens.children[index],phone=root.querySelector('.phone'),input=root.querySelector('.url');
+ root.querySelector('.screen-label').textContent=theme==='light'?'LIGHT':'DARK';
+ phone.classList.toggle('dark',theme==='dark');
+ input.id=`url-${index}`;root.querySelector('.url-label').htmlFor=input.id;
+ const notice=message=>{const item=root.querySelector('.alert');item.hidden=false;item.textContent=message;};
+ const validate=()=>{let valid=false;try{const parsed=new URL(input.value);valid=['http:','https:'].includes(parsed.protocol)&&!parsed.username&&!parsed.password;}catch{}root.querySelector('.download').disabled=!valid;root.querySelector('.inspect').disabled=!valid;};
+ input.addEventListener('input',validate);
+ root.querySelector('.paste').addEventListener('click',()=>{notice('디자인 데모에서는 링크 칸을 눌러 직접 붙여넣어 주세요.');input.focus();});
+ root.querySelector('.inspect').addEventListener('click',()=>notice('실제 영상 정보 확인은 iOS 앱에서 실행됩니다.'));
+ root.querySelector('.download').addEventListener('click',()=>notice('이 화면은 디자인 데모입니다. 실제 다운로드는 iOS 앱에서 실행됩니다.'));
+ root.querySelector('.settings').addEventListener('click',()=>{phone.classList.toggle('dark');root.querySelector('.screen-label').textContent=phone.classList.contains('dark')?'DARK':'LIGHT';});
+ root.querySelectorAll('.format').forEach(button=>button.addEventListener('click',()=>{
+  root.querySelectorAll('.format').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+  const audio=button.dataset.format==='M4A';root.querySelector('.quality-label').textContent=audio?'음질':'화질';
+  root.querySelector('select').hidden=audio;root.querySelector('.audio-quality').hidden=!audio;
+  root.querySelector('.audio-quality').style.cssText='font-size:12px;color:var(--muted)';
+  root.querySelector('.note').textContent=audio?'M4A 형식의 원본 오디오를 저장합니다.':'선택한 화질 이하의 호환 가능한 원본을 저장합니다.';
+ }));
+ root.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>{
+  const library=button.dataset.tab==='library';root.querySelectorAll('.tab').forEach(item=>item.setAttribute('aria-selected',String(item===button)));
+  root.querySelector('.download-panel').hidden=library;root.querySelector('.library').hidden=!library;
+  root.querySelector('.download-area').hidden=library;root.querySelector('.nav-title').textContent=library?'보관함':'yt-dlp GUI';
+ }));
+});
+</script>
+</body>
+</html>

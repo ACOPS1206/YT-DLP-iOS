@@ -1,0 +1,11 @@
+Vendor/
+build/
+*.xcodeproj/
+__pycache__/
+*.pyc
+.DS_Store
+Python/app/yt_dlp/
+Python/app/yt_dlp_ejs/
+Python/app/certifi/
+Python/app/*.dist-info/
+Python/app/bin/

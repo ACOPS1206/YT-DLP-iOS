@@ -1,0 +1,102 @@
+name: YTDLPGUI
+options:
+  bundleIdPrefix: dev.acops
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER: NO
+    APP_GROUP_IDENTIFIER: group.dev.acops.ytdlpgui
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "2"
+targets:
+  YTDLPGUI:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - Info.plist
+          - App.entitlements
+      - path: Shared
+      - path: Python/app
+        type: folder
+    dependencies:
+      - framework: Vendor/Python.xcframework
+        embed: true
+        codeSign: true
+      - sdk: JavaScriptCore.framework
+      - target: ShareExtension
+        embed: true
+      - target: LiveActivityExtension
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.acops.ytdlpgui
+        PRODUCT_NAME: YTDLPGUI
+        INFOPLIST_FILE: App/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: App/Native/BridgingHeader.h
+        HEADER_SEARCH_PATHS: '$(inherited) "$(BUILT_PRODUCTS_DIR)/Python.framework/Headers"'
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "2"
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+    postBuildScripts:
+      - name: Install embedded Python runtime
+        script: bash "$PROJECT_DIR/tools/embed-python.sh"
+        basedOnDependencyAnalysis: false
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+        excludes: [Info.plist, Share.entitlements]
+      - path: Shared/SharedInbox.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.acops.ytdlpgui.share
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/Share.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+  LiveActivityExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: LiveActivityExtension
+        excludes: [Info.plist]
+      - path: Shared/DownloadActivityAttributes.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.acops.ytdlpgui.liveactivity
+        INFOPLIST_FILE: LiveActivityExtension/Info.plist
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+  YTDLPGUITests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NativeTests
+    dependencies:
+      - target: YTDLPGUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.acops.ytdlpgui.tests
+        TEST_HOST: '$(BUILT_PRODUCTS_DIR)/YTDLPGUI.app/YTDLPGUI'
+        BUNDLE_LOADER: '$(TEST_HOST)'
+schemes:
+  YTDLPGUI:
+    build:
+      targets:
+        YTDLPGUI: all
+    test:
+      targets:
+        - YTDLPGUITests
