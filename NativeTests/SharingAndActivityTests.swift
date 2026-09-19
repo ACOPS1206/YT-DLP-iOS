@@ -9,6 +9,18 @@ final class SharingAndActivityTests: XCTestCase {
         XCTAssertFalse(SharedLinkParser.valid("https://user:secret@example.com/video"))
     }
 
+    func testShareDeepLinkPreservesDownloadOptions() throws {
+        let request = SharedDownloadRequest(link: "https://example.com/video?id=one&list=two",
+                                            format: "M4A", quality: 720)
+        let url = try XCTUnwrap(SharedLinkParser.deepLink(for: request))
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.scheme, "ytdlpgui")
+        XCTAssertEqual(components.host, "download")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "url" })?.value, request.link)
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "format" })?.value, "M4A")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "quality" })?.value, "720")
+    }
+
     func testSharedOptionsRoundTripAndConsumeOneItem() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

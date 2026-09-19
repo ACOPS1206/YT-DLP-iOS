@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
         super.viewDidLoad()
         let host = UIHostingController(rootView: ShareDownloadView(
             loadLink: { [weak self] in await self?.findLink() },
+            openApp: { [weak self] request in await self?.openApp(with: request) ?? false },
             finish: { [weak self] in self?.extensionContext?.completeRequest(returningItems: nil) }
         ))
         addChild(host)
@@ -41,10 +42,18 @@ import UniformTypeIdentifiers
         }
         return nil
     }
+
+    private func openApp(with request: SharedDownloadRequest) async -> Bool {
+        guard let url = SharedLinkParser.deepLink(for: request), let extensionContext else { return false }
+        return await withCheckedContinuation { continuation in
+            extensionContext.open(url) { opened in continuation.resume(returning: opened) }
+        }
+    }
 }
 
 private struct ShareDownloadView: View {
     let loadLink: () async -> String?
+    let openApp: (SharedDownloadRequest) async -> Bool
     let finish: () -> Void
     @State private var link = ""
     @State private var format = "MP4"
@@ -81,9 +90,9 @@ private struct ShareDownloadView: View {
                         }
                     }
                     Section {
-                        Button("다운로드 대기열에 추가", systemImage: "arrow.down.to.line") { enqueue() }
+                        Button("앱에서 다운로드", systemImage: "arrow.down.to.line") { submit() }
                             .disabled(loading || !SharedLinkParser.valid(link))
-                        Text("공유 후 앱을 열면 다운로드가 시작됩니다.")
+                        Text("가능하면 앱을 바로 열고, 열 수 없으면 대기열에 안전하게 추가합니다.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
@@ -97,14 +106,26 @@ private struct ShareDownloadView: View {
                 if link.isEmpty { error = "공유된 동영상 링크를 찾지 못했습니다. 링크를 직접 입력할 수 있어요." }
             }
         }
+        .tint(.primary)
     }
 
-    private func enqueue() {
-        do {
-            let request = SharedDownloadRequest(link: link.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                format: format, quality: quality)
-            try SharedInbox.enqueue(request)
-            error = nil; queued = true
-        } catch { self.error = error.localizedDescription }
+    private func submit() {
+        let request = SharedDownloadRequest(link: link.trimmingCharacters(in: .whitespacesAndNewlines),
+                                            format: format, quality: quality)
+        loading = true
+        error = nil
+        Task {
+            if await openApp(request) {
+                finish()
+                return
+            }
+            do {
+                try SharedInbox.enqueue(request)
+                queued = true
+            } catch {
+                self.error = "앱으로 링크를 전달하지 못했습니다: \(error.localizedDescription)"
+            }
+            loading = false
+        }
     }
 }
