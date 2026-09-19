@@ -12,216 +12,366 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("다운로드", systemImage: "arrow.down", value: .download) { downloadView }
-            Tab("보관함", systemImage: "folder", value: .library) { LibraryView(model: model) }
-            Tab("로그", systemImage: "text.alignleft", value: .logs) { LogsView(model: model) }
+            Tab("다운로드", systemImage: "arrow.down", value: .download) {
+                downloadView
+            }
+            Tab("보관함", systemImage: "folder", value: .library) {
+                LibraryView(model: model)
+            }
+            Tab("로그", systemImage: "text.alignleft", value: .logs) {
+                LogsView(model: model)
+            }
         }
-        .sheet(isPresented: $showingSettings) { SettingsView(model: model) }
-        .task { await model.resumeSharedDownloads() }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(model: model)
+        }
+        .task {
+            await model.resumeSharedDownloads()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await model.resumeSharedDownloads() } }
+            if phase == .active {
+                Task { await model.resumeSharedDownloads() }
+            }
         }
         .onOpenURL(perform: open)
     }
 
     private var downloadView: some View {
         NavigationStack {
-            Form {
-                linkSection
-                if let info = model.info { previewSection(info) }
-                optionsSection
-                if model.isBusy { progressSection }
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 26) {
+                        intro
+                        linkInput
 
-                if let notice = model.liveActivityNotice {
-                    Section {
-                        Label(notice, systemImage: "info.circle").foregroundStyle(.secondary)
+                        if let info = model.info {
+                            preview(info)
+                        }
+
+                        options
+
+                        if model.isBusy {
+                            activity
+                        }
+
+                        if let notice = model.liveActivityNotice {
+                            Text(notice)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let message = model.errorMessage {
+                            Label(message, systemImage: "exclamationmark.circle")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("오류: \(message)")
+                        }
+
+                        if let item = model.lastSaved {
+                            savedCard(item)
+                        }
                     }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 22)
+                    .padding(.bottom, 118)
+                    .frame(maxWidth: 600)
+                    .frame(maxWidth: .infinity)
                 }
-                if let message = model.errorMessage {
-                    Section {
-                        Label(message, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.red)
-                            .accessibilityLabel("오류: \(message)")
-                    }
-                }
-                if let item = model.lastSaved { savedSection(item) }
+                .scrollDismissesKeyboard(.interactively)
+                .background(AppBackground())
+
+                downloadButton
             }
-            .formStyle(.grouped)
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("다운로드")
+            // Keep the bottom action pinned to the physical screen bottom.
+            // When the keyboard appears, it covers the button instead of
+            // pushing the button upward with the keyboard safe area.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .navigationTitle("yt-dlp GUI")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("설정", systemImage: "gearshape") { showingSettings = true }
+                    Button("설정", systemImage: "gearshape") {
+                        showingSettings = true
+                    }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("완료") { linkFocused = false }
-                }
-            }
-            .safeAreaInset(edge: .bottom) { primaryAction }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-            .onChange(of: model.link) { _, _ in model.invalidatePreview() }
-        }
-    }
-
-    private var linkSection: some View {
-        Section {
-            TextField("https://…", text: $model.link, axis: .vertical)
-                .lineLimit(1...3)
-                .textContentType(.URL)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($linkFocused)
-                .disabled(model.isBusy)
-                .accessibilityIdentifier("linkInput")
-
-            HStack {
-                PasteButton(payloadType: String.self) { values in
-                    if let first = values.first {
-                        model.link = first.trimmingCharacters(in: .whitespacesAndNewlines)
+                    Button("완료") {
+                        linkFocused = false
                     }
                 }
-                .labelStyle(.titleAndIcon)
-                .disabled(model.isBusy)
-                Spacer()
-                Button("정보 확인", systemImage: "info.circle") {
-                    linkFocused = false
-                    model.inspect()
-                }
-                .disabled(!model.hasValidLink || model.isBusy)
             }
-        } header: {
-            Text("동영상 링크")
-        } footer: {
-            Text("저장할 동영상의 웹 주소를 입력하거나 붙여넣으세요.")
+            .onChange(of: model.link) { _, _ in
+                model.invalidatePreview()
+            }
         }
     }
 
-    private func previewSection(_ info: MediaInfo) -> some View {
-        Section("미리보기") {
-            HStack(alignment: .top, spacing: 12) {
+    private var intro: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("링크 하나로,\n간편하게 저장.")
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("동영상이나 오디오를 iPhone에 담아두세요.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var linkInput: some View {
+        ContentCard {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("동영상 링크", systemImage: "link")
+                    .font(.subheadline.weight(.semibold))
+
+                TextField("https://…", text: $model.link, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(1...3)
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($linkFocused)
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("linkInput")
+
+                HStack {
+                    PasteButton(payloadType: String.self) { values in
+                        if let first = values.first {
+                            model.link = first.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    }
+                    .buttonBorderShape(.capsule)
+                    .labelStyle(.titleAndIcon)
+                    .disabled(model.isBusy)
+
+                    Spacer()
+
+                    Button("정보 확인", systemImage: "arrow.up.right") {
+                        linkFocused = false
+                        model.inspect()
+                    }
+                    .font(.subheadline)
+                    .buttonStyle(.glass)
+                    .disabled(!model.hasValidLink || model.isBusy)
+                }
+            }
+        }
+    }
+
+    private func preview(_ info: MediaInfo) -> some View {
+        ContentCard {
+            HStack(alignment: .top, spacing: 14) {
                 AsyncImage(url: info.thumbnail.flatMap(URL.init(string:))) { image in
-                    image.resizable().scaledToFill()
+                    image
+                        .resizable()
+                        .scaledToFill()
                 } placeholder: {
                     ZStack {
                         Color(uiColor: .tertiarySystemFill)
-                        Image(systemName: "play.rectangle").foregroundStyle(.secondary)
+                        Image(systemName: "play.rectangle")
+                            .font(.title2)
                     }
                 }
-                .frame(width: 96, height: 54)
-                .clipShape(.rect(cornerRadius: 8))
+                .frame(width: 100, height: 68)
+                .clipShape(.rect(cornerRadius: 14))
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(info.title).font(.body.weight(.medium)).lineLimit(2)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(info.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+
                     if !info.author.isEmpty {
-                        Text(info.author).foregroundStyle(.secondary).lineLimit(1)
+                        Text(info.author)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
+
                     Text(info.durationLabel)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.vertical, 2)
         }
     }
 
-    private var optionsSection: some View {
-        Section {
-            Picker("형식", selection: $model.format) {
-                ForEach(SaveFormat.allCases) { format in
-                    Label(format.rawValue, systemImage: format.symbol).tag(format)
+    private var options: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("저장 옵션")
+                .font(.headline)
+
+            GlassEffectContainer(spacing: 12) {
+                HStack(spacing: 12) {
+                    ForEach(SaveFormat.allCases) { format in
+                        FormatChoice(format: format, selected: model.format == format) {
+                            model.format = format
+                        }
+                    }
                 }
             }
-            .pickerStyle(.segmented)
             .disabled(model.isBusy)
 
-            if model.format == .mp4 {
-                Picker("화질", selection: $model.quality) {
-                    ForEach(Quality.allCases) { quality in Text(quality.title).tag(quality) }
+            ContentCard {
+                HStack {
+                    Label(
+                        model.format == .mp4 ? "화질" : "음질",
+                        systemImage: "slider.horizontal.3"
+                    )
+                    .font(.subheadline)
+
+                    Spacer()
+
+                    if model.format == .mp4 {
+                        Picker("화질", selection: $model.quality) {
+                            ForEach(Quality.allCases) { quality in
+                                Text(quality.title).tag(quality)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .disabled(model.isBusy)
+                    } else {
+                        Text("원본 AAC")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .disabled(model.isBusy)
-            } else {
-                LabeledContent("음질", value: "원본 AAC")
             }
 
             NavigationLink {
                 AdvancedOptionsView(model: model)
             } label: {
-                LabeledContent("자막 및 고급 옵션", value: model.advancedOptionsSummary)
+                ContentCard {
+                    HStack(spacing: 12) {
+                        Label("자막 및 고급 옵션", systemImage: "slider.horizontal.2.square")
+                            .font(.subheadline)
+
+                        Spacer()
+
+                        Text(model.advancedOptionsSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
             }
+            .buttonStyle(.plain)
             .disabled(model.isBusy)
-        } header: {
-            Text("저장 옵션")
-        } footer: {
-            Text(model.format == .mp4
-                 ? "선택한 화질 이하의 호환 가능한 H.264 동영상을 저장합니다."
-                 : "원본 AAC 오디오를 M4A 형식으로 저장합니다.")
+
+            Text(
+                model.format == .mp4
+                    ? "선택한 화질 이하의 호환 가능한 H.264 동영상을 저장합니다."
+                    : "원본 AAC 오디오를 M4A 형식으로 저장합니다."
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
-    private var progressSection: some View {
-        Section("진행 상황") {
-            HStack {
-                Text(model.phaseLabel)
-                Spacer()
+    private var activity: some View {
+        ContentCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(model.phaseLabel)
+                        .font(.subheadline.weight(.semibold))
+
+                    Spacer()
+
+                    if let progress = model.progress {
+                        Text(progress, format: .percent.precision(.fractionLength(0)))
+                            .font(.subheadline.monospacedDigit())
+                    }
+                }
+
                 if let progress = model.progress {
-                    Text(progress, format: .percent.precision(.fractionLength(0)))
-                        .foregroundStyle(.secondary).monospacedDigit()
+                    ProgressView(value: progress)
+                } else {
+                    ProgressView()
                 }
+
+                HStack {
+                    Text(model.transferLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("취소", role: .cancel) {
+                        model.cancel()
+                    }
+                    .font(.caption)
+                }
+
+                if let line = model.logs.last {
+                    Text(line.message)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Button("전체 로그 보기", systemImage: "text.alignleft") {
+                    selectedTab = .logs
+                }
+                .font(.caption)
+                .buttonStyle(.glass)
             }
-            if let progress = model.progress { ProgressView(value: progress) }
-            else { ProgressView() }
-            if !model.transferLabel.isEmpty { LabeledContent("전송", value: model.transferLabel) }
-            if let line = model.logs.last {
-                Text(line.message)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func savedCard(_ item: SavedMedia) -> some View {
+        ContentCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("저장 완료", systemImage: "checkmark.circle.fill")
+                    .font(.headline)
+
+                Text(item.title)
+                    .font(.subheadline)
                     .lineLimit(2)
-            }
-            Button("전체 로그 보기", systemImage: "text.alignleft") { selectedTab = .logs }
-            Button("다운로드 취소", systemImage: "xmark.circle", role: .destructive) { model.cancel() }
-        }
-    }
 
-    private func savedSection(_ item: SavedMedia) -> some View {
-        Section("최근 저장") {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(item.title).lineLimit(2)
-                    Text(item.detailLabel).font(.caption).foregroundStyle(.secondary)
+                Text(item.detailLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ShareLink(items: item.shareURLs) {
+                    Label("파일 저장 또는 공유", systemImage: "square.and.arrow.up")
                 }
-            } icon: {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-            }
-            ShareLink(items: item.shareURLs) {
-                Label("파일 저장 또는 공유", systemImage: "square.and.arrow.up")
+                .buttonStyle(.glass)
             }
         }
     }
 
-    private var primaryAction: some View {
+    private var downloadButton: some View {
         let isEnabled = model.hasValidLink && !model.isBusy
 
-        return Button {
-            linkFocused = false
-            model.download()
-        } label: {
-            Label(model.isBusy ? model.phaseLabel : "다운로드", systemImage: "arrow.down.to.line")
+        return VStack(spacing: 10) {
+            Button {
+                linkFocused = false
+                model.download()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "arrow.down.to.line")
+                    Text(model.isBusy ? model.phaseLabel : "다운로드")
+                }
                 .font(.headline)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .foregroundStyle(isEnabled ? Color(uiColor: .systemBackground) : Color.secondary)
-                .background(
-                    isEnabled ? Color.primary : Color(uiColor: .tertiarySystemFill),
-                    in: Capsule()
-                )
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.capsule)
+            .disabled(!isEnabled)
+            .accessibilityIdentifier("downloadButton")
         }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .accessibilityIdentifier("downloadButton")
-        .padding(.horizontal)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
     }
 
     private func open(_ url: URL) {
@@ -229,19 +379,28 @@ struct ContentView: View {
             selectedTab = .logs
             return
         }
-        guard url.scheme == "ytdlpgui", url.host == "download",
+
+        guard url.scheme == "ytdlpgui",
+              url.host == "download",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let link = components.queryItems?.first(where: { $0.name == "url" })?.value,
-              !model.isBusy else { return }
+              !model.isBusy else {
+            return
+        }
+
         model.link = link
+
         if let rawFormat = components.queryItems?.first(where: { $0.name == "format" })?.value,
            let format = SaveFormat(rawValue: rawFormat) {
             model.format = format
         }
+
         if let rawQuality = components.queryItems?.first(where: { $0.name == "quality" })?.value,
-           let value = Int(rawQuality), let quality = Quality(rawValue: value) {
+           let value = Int(rawQuality),
+           let quality = Quality(rawValue: value) {
             model.quality = quality
         }
+
         selectedTab = .download
         model.download()
     }
