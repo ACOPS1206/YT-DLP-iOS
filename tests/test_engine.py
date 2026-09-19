@@ -192,7 +192,9 @@ class ActualDownloaderTests(unittest.TestCase):
     def test_logger_redacts_signed_urls_and_emits_warning(self):
         from yt_dlp import YoutubeDL
         events = []
+        options = {}
         def extract(ydl, url, download=False):
+            options.update(ydl.params)
             ydl.params["logger"].warning("테스트 안내 https://example.com/video?token=secret")
             return {"id": "fixture", "title": "내 영상"}
         with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract), \
@@ -202,6 +204,7 @@ class ActualDownloaderTests(unittest.TestCase):
         warning = next(event for event in events if event.get("level") == "warning")
         self.assertIn("[링크]", warning["message"])
         self.assertNotIn("secret", json.dumps(events))
+        self.assertEqual(options["format"], "best")
 
     def test_javascriptcore_provider_registers_and_loads_bundled_solver(self):
         from yt_dlp import YoutubeDL
