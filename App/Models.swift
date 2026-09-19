@@ -5,14 +5,14 @@ enum SaveFormat: String, CaseIterable, Identifiable, Codable {
     case mp4 = "MP4", m4a = "M4A"
     var id: String { rawValue }
     var symbol: String { self == .mp4 ? "video" : "waveform" }
-    var title: String { self == .mp4 ? "동영상" : "오디오" }
+    var title: String { self == .mp4 ? appText("동영상", "Video") : appText("오디오", "Audio") }
     var detail: String { self == .mp4 ? "영상과 소리 함께" : "소리만 저장" }
 }
 
 enum Quality: Int, CaseIterable, Identifiable, Codable {
     case best = 0, p1080 = 1080, p720 = 720, p480 = 480
     var id: Int { rawValue }
-    var title: String { self == .best ? "최고 화질" : "\(rawValue)p 이하" }
+    var title: String { self == .best ? appText("최고 화질", "Best Quality") : appText("\(rawValue)p 이하", "Up to \(rawValue)p") }
 }
 
 enum Appearance: String, CaseIterable, Identifiable {
