@@ -28,6 +28,20 @@ enum SharedLinkParser {
               components.user == nil, components.password == nil else { return false }
         return true
     }
+
+    static func deepLink(for request: SharedDownloadRequest) -> URL? {
+        guard valid(request.link), ["MP4", "M4A"].contains(request.format),
+              [0, 480, 720, 1080].contains(request.quality) else { return nil }
+        var components = URLComponents()
+        components.scheme = "ytdlpgui"
+        components.host = "download"
+        components.queryItems = [
+            URLQueryItem(name: "url", value: request.link),
+            URLQueryItem(name: "format", value: request.format),
+            URLQueryItem(name: "quality", value: String(request.quality)),
+        ]
+        return components.url
+    }
 }
 
 enum SharedInbox {

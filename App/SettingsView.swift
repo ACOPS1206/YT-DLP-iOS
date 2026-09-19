@@ -18,7 +18,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Toggle("다운로드 실행 유지", isOn: $backgroundAudioKeepAlive)
+                    Toggle("백그라운드에서 유지", isOn: $backgroundAudioKeepAlive)
                         .onChange(of: backgroundAudioKeepAlive) { _, enabled in
                             model.setBackgroundAudioEnabled(enabled)
                         }
@@ -69,7 +69,7 @@ struct SettingsView: View {
 
                 Section("앱 정보") {
                     LabeledContent("버전", value: "0.2.0")
-                    Link("프로젝트 웹사이트", destination: URL(string: "https://github.com/ACOPS1206/YT-DLP-iOS")!)
+                    Link("GitHub", destination: URL(string: "https://github.com/ACOPS1206/YT-DLP-iOS")!)
                 }
             }
             .navigationTitle("설정")

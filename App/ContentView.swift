@@ -59,6 +59,7 @@ struct ContentView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) { primaryAction }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
             .onChange(of: model.link) { _, _ in model.invalidatePreview() }
         }
     }
@@ -226,6 +227,15 @@ struct ContentView: View {
               let link = components.queryItems?.first(where: { $0.name == "url" })?.value,
               !model.isBusy else { return }
         model.link = link
+        if let rawFormat = components.queryItems?.first(where: { $0.name == "format" })?.value,
+           let format = SaveFormat(rawValue: rawFormat) {
+            model.format = format
+        }
+        if let rawQuality = components.queryItems?.first(where: { $0.name == "quality" })?.value,
+           let value = Int(rawQuality), let quality = Quality(rawValue: value) {
+            model.quality = quality
+        }
         selectedTab = .download
+        model.download()
     }
 }

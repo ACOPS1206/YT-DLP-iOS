@@ -9,6 +9,7 @@ struct YTDLPGUIApp: App {
         WindowGroup {
             ContentView(model: model)
                 .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
+                .tint(.primary)
         }
     }
 }
