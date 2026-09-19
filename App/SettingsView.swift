@@ -4,9 +4,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = Appearance.system.rawValue
     @AppStorage("backgroundAudioKeepAlive") private var backgroundAudioKeepAlive = true
-    @AppStorage("accentColor") private var accentColor = AccentColorChoice.monochrome.rawValue
     @AppStorage("appLanguage") private var appLanguage = AppLanguage.system.rawValue
-    @AppStorage("yellowActiveDownloadButton") private var yellowActiveDownloadButton = true
     @Bindable var model: DownloadModel
 
     var body: some View {
@@ -20,30 +18,10 @@ struct SettingsView: View {
                     }
                 }
 
-                Section(appText("개인화", "Personalization")) {
-                    Picker(appText("강조 색상", "Accent Color"), selection: $accentColor) {
-                        ForEach(AccentColorChoice.allCases) { choice in
-                            HStack {
-                                Circle().fill(choice.color).frame(width: 12, height: 12)
-                                Text(choice.title)
-                            }
-                            .tag(choice.rawValue)
-                        }
-                    }
-                    Picker(appText("언어", "Language"), selection: $appLanguage) {
+                Section(appText("언어", "Language")) {
+                    Picker(appText("앱 언어", "App Language"), selection: $appLanguage) {
                         ForEach(AppLanguage.allCases) { language in
                             Text(language.title).tag(language.rawValue)
-                        }
-                    }
-
-                    Toggle(isOn: $yellowActiveDownloadButton) {
-                        HStack(spacing: 8) {
-                            Text(appText("활성 다운로드 버튼을 노란색으로", "Yellow Active Download Button"))
-                            Text(appText("베타", "BETA"))
-                                .font(.caption2.weight(.semibold))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.yellow.opacity(0.22), in: Capsule())
                         }
                     }
                 }
@@ -99,7 +77,7 @@ struct SettingsView: View {
                 }
 
                 Section(appText("앱 정보", "App Info")) {
-                    LabeledContent(appText("버전", "Version"), value: "2.5")
+                    LabeledContent(appText("버전", "Version"), value: "2.6")
                     Link("GitHub", destination: URL(string: "https://github.com/ACOPS1206/YT-DLP-iOS")!)
                 }
             }
