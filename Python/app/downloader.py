@@ -119,8 +119,13 @@ def run(request_json):
             "cachedir": False, "socket_timeout": 15,
             "retries": 2, "fragment_retries": 2,
             "js_runtimes": {}, "remote_components": [],
-            "extractor_args": {"youtube": {"player_client": ["web", "web_safari"]}},
-            "format": "bestvideo+bestaudio/best",
+            # web/web_safari may expose only SABR/storyboard entries without a
+            # GVS PO Token. Prefer a client that currently exposes direct media
+            # URLs on-device, and let our own select_streams() choose H.264/AAC.
+            "extractor_args": {"youtube": {"player_client": ["android_vr"]}},
+            # Keep metadata available even if YouTube temporarily exposes no
+            # downloadable A/V formats, so we can return our own clear error.
+            "ignore_no_formats_error": True,
             "postprocessors": [], "fixup": "never",
             "age_limit": 17, "overwrites": True,
         }
