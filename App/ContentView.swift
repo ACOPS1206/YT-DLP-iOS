@@ -214,6 +214,19 @@ struct ContentView: View {
             .disabled(model.isBusy)
 
             ContentCard {
+                Toggle(isOn: $model.downloadOriginalFormat) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("원본 포맷", systemImage: "shippingbox")
+                            .font(.subheadline)
+                        Text("변환이나 컨테이너 변경 없이 제공되는 원본 스트림을 저장")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(model.isBusy)
+            }
+
+            ContentCard {
                 HStack {
                     Label(
                         model.format == .mp4 ? "화질" : "음질",
@@ -232,7 +245,7 @@ struct ContentView: View {
                         .pickerStyle(.menu)
                         .disabled(model.isBusy)
                     } else {
-                        Text("원본 AAC")
+                        Text(model.downloadOriginalFormat ? "원본 오디오" : "AAC 우선")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -264,9 +277,13 @@ struct ContentView: View {
             .disabled(model.isBusy)
 
             Text(
-                model.format == .mp4
-                    ? "선택한 화질 이하의 호환 가능한 H.264 동영상을 저장합니다."
-                    : "원본 AAC 오디오를 M4A 형식으로 저장합니다."
+                model.downloadOriginalFormat
+                    ? (model.format == .mp4
+                       ? "선택한 화질 이하에서 영상과 소리가 함께 든 원본 스트림을 그대로 저장합니다."
+                       : "가장 좋은 원본 오디오 스트림을 확장자 그대로 저장합니다.")
+                    : (model.format == .mp4
+                       ? "H.264 MP4를 우선하고, 없으면 같은 화질의 재생 가능한 원본 포맷으로 자동 대체합니다."
+                       : "AAC/M4A를 우선하고, 없으면 다른 원본 오디오 포맷으로 자동 대체합니다.")
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -412,6 +429,9 @@ struct ContentView: View {
            let quality = Quality(rawValue: value) {
             model.quality = quality
         }
+
+        let rawOriginal = components.queryItems?.first(where: { $0.name == "original" })?.value?.lowercased()
+        model.downloadOriginalFormat = rawOriginal == "1" || rawOriginal == "true"
 
         selectedTab = .download
         model.download()
