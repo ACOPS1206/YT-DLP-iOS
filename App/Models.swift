@@ -47,6 +47,7 @@ struct EngineResult: Decodable {
     let info: MediaInfo?
     let video: String?
     let audio: String?
+    let file: String?
     let subtitle: String?
     let version: String?
     let updated: Bool?
