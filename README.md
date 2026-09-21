@@ -7,10 +7,12 @@ iOS 26용 SwiftUI 앱(build 6)입니다. Liquid Glass 카드, 시스템 탭·도
 - 링크 입력과 시스템 붙여넣기 버튼
 - 제목, 제작자, 길이, 썸네일 확인
 - MP4 동영상 / M4A 오디오 선택
-- 최고 화질 / 1080p 이하 / 720p 이하 / 480p 이하\n- 첫 화면의 `원본 포맷` 토글로 변환·컨테이너 변경 없이 원본 스트림 저장\n- `yt-dlp 기본 선택` 토글로 포맷·화질 선택을 넘기지 않고 yt-dlp 기본 형식 선택 사용
+- 최고 화질 / 1080p 이하 / 720p 이하 / 480p 이하
+- 첫 화면의 `원본 포맷` 토글로 변환·컨테이너 변경 없이 원본 스트림 저장
+- `yt-dlp 기본 선택` 토글로 포맷·화질 선택을 넘기지 않고 yt-dlp 기본 형식 선택 사용
 - 비디오·오디오 원본 확장자 선호 지정
 - 언어 우선순위 및 자동 생성 자막 옵션, 미디어와 자막 함께 공유
-- 안전한 허용 목록 기반 추가 yt-dlp 인자
+- 안전한 허용 목록 기반 추가 yt-dlp 인자 (`-t`/`--preset-alias` 포함)
 - 앱 안에서 최신 yt-dlp wheel 원클릭 설치 및 번들 버전 복구
 - 진행률, 속도, 예상 시간, 취소
 - 공유 시트에서 링크·형식·화질을 본 앱으로 전달해 바로 다운로드하고, 앱을 열 수 없으면 대기열에 추가
@@ -71,7 +73,7 @@ bootstrap은 SHA-256으로 고정한 BeeWare Python 3.13 iOS 지원 패키지와
 - 무음 오디오를 단순 실행 유지 목적으로 사용하는 설계는 App Store 배포 적합성을 보장하지 않습니다. [Apple 심사 지침 2.5.4](https://developer.apple.com/app-store/review/guidelines/#software-requirements)는 백그라운드 모드를 해당 목적에 맞게 사용하도록 요구합니다.
 - 취소는 다운로드 콜백과 단계 사이에서 확인합니다. 응답 대기 또는 JavaScript 실행 중에는 즉시 중단되지 않을 수 있습니다. 파일 결합 단계에서 취소하면 결과를 보관함에 넣지 않습니다.
 - 설정의 업데이트 버튼은 PyPI 최신 wheel을 내려받아 게시된 SHA-256과 대조한 뒤 `Application Support/YTDLPEngine/<버전>`에 원자적으로 설치합니다. 다음 앱 실행에서 이 패키지를 번들보다 먼저 불러옵니다. 로드에 실패하면 활성 표식을 제거하고 번들 버전으로 되돌아갑니다.
-- 추가 인자는 셸로 전달하지 않습니다. `--socket-timeout`, `--retries`, `--fragment-retries`, `--user-agent`, `--referer`, `--add-header`만 yt-dlp Python API 옵션으로 변환합니다.
+- 추가 인자는 셸로 전달하지 않습니다. `-t`/`--preset-alias`와 `--socket-timeout`, `--retries`, `--fragment-retries`, `--user-agent`, `--referer`, `--add-header`만 허용합니다. `-t`는 yt-dlp의 내장 프리셋 `mp3`, `aac`, `mp4`, `mkv`, `sleep`을 그대로 해석합니다. 미디어 변환/리먹스 프리셋은 FFmpeg를 요구할 수 있어 iOS에서는 실패할 수 있습니다.
 
 ## 테스트
 

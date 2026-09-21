@@ -20,7 +20,7 @@ bridge.is_cancelled = lambda: False
 bridge.evaluate_js = lambda script: '{"type":"error","error":"fixture"}'
 sys.modules["_ios_bridge"] = bridge
 
-from downloader import (install_latest_engine, parse_custom_arguments, run,
+from downloader import (install_latest_engine, parse_custom_arguments, resolve_preset_aliases, run,
                         select_streams, select_subtitle, validate_url)
 
 
@@ -105,6 +105,20 @@ class FormatSelectionTests(unittest.TestCase):
         for unsafe in ("--exec whoami", "--paths /tmp", "https://example.com", "--plugin-dirs x"):
             with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
                 parse_custom_arguments(unsafe)
+
+    def test_preset_alias_arguments_are_allowlisted(self):
+        options = parse_custom_arguments("-t mp4 --preset-alias sleep")
+        self.assertEqual(options["_preset_aliases"], ["mp4", "sleep"])
+        with self.assertRaisesRegex(ValueError, "프리셋"):
+            parse_custom_arguments("-t unknown")
+
+    def test_preset_aliases_use_yt_dlp_parser_semantics(self):
+        from yt_dlp import parse_options
+        options = resolve_preset_aliases(parse_options, ["sleep"])
+        self.assertEqual(options["sleep_interval_subtitles"], 5)
+        self.assertEqual(options["sleep_interval_requests"], 0.75)
+        self.assertEqual(options["sleep_interval"], 10)
+        self.assertEqual(options["max_sleep_interval"], 20)
 
     def test_subtitle_prefers_manual_then_requested_language(self):
         info = {
