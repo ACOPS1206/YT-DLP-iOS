@@ -6,11 +6,12 @@ struct SharedDownloadRequest: Codable, Identifiable {
     let format: String
     let quality: Int
     let originalFormat: Bool?
+    let ytdlpDefaults: Bool?
     let createdAt: Date
 
-    init(link: String, format: String, quality: Int, originalFormat: Bool = false) {
+    init(link: String, format: String, quality: Int, originalFormat: Bool = false, ytdlpDefaults: Bool = false) {
         id = UUID(); self.link = link; self.format = format; self.quality = quality
-        self.originalFormat = originalFormat; createdAt = .now
+        self.originalFormat = originalFormat; self.ytdlpDefaults = ytdlpDefaults; createdAt = .now
     }
 }
 
@@ -42,6 +43,7 @@ enum SharedLinkParser {
             URLQueryItem(name: "format", value: request.format),
             URLQueryItem(name: "quality", value: String(request.quality)),
             URLQueryItem(name: "original", value: (request.originalFormat ?? false) ? "1" : "0"),
+            URLQueryItem(name: "defaults", value: (request.ytdlpDefaults ?? false) ? "1" : "0"),
         ]
         return components.url
     }

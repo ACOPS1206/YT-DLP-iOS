@@ -211,7 +211,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .disabled(model.isBusy)
+            .disabled(model.isBusy || model.useYTDLPDefaults)
 
             ContentCard {
                 Toggle(isOn: $model.downloadOriginalFormat) {
@@ -223,7 +223,23 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .disabled(model.isBusy || model.useYTDLPDefaults)
+            }
+
+            ContentCard {
+                Toggle(isOn: $model.useYTDLPDefaults) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("yt-dlp 기본 선택", systemImage: "terminal")
+                            .font(.subheadline)
+                        Text("포맷·화질 선택을 지정하지 않고 yt-dlp 기본 동작을 사용")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 .disabled(model.isBusy)
+                .onChange(of: model.useYTDLPDefaults) { _, enabled in
+                    if enabled { model.downloadOriginalFormat = false }
+                }
             }
 
             ContentCard {
@@ -243,7 +259,7 @@ struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .disabled(model.isBusy)
+                        .disabled(model.isBusy || model.useYTDLPDefaults)
                     } else {
                         Text(model.downloadOriginalFormat ? "원본 오디오" : "AAC 우선")
                             .font(.subheadline)
@@ -274,10 +290,12 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(model.isBusy)
+            .disabled(model.isBusy || model.useYTDLPDefaults)
 
             Text(
-                model.downloadOriginalFormat
+                model.useYTDLPDefaults
+                    ? "포맷·화질·확장자 선택을 넘기지 않고 yt-dlp의 기본 형식 선택으로 다운로드합니다. iOS에서 FFmpeg가 필요한 링크는 실패할 수 있습니다."
+                    : model.downloadOriginalFormat
                     ? (model.format == .mp4
                        ? "선택한 화질 이하에서 영상과 소리가 함께 든 원본 스트림을 그대로 저장합니다."
                        : "가장 좋은 원본 오디오 스트림을 확장자 그대로 저장합니다.")
@@ -432,6 +450,9 @@ struct ContentView: View {
 
         let rawOriginal = components.queryItems?.first(where: { $0.name == "original" })?.value?.lowercased()
         model.downloadOriginalFormat = rawOriginal == "1" || rawOriginal == "true"
+        let rawDefaults = components.queryItems?.first(where: { $0.name == "defaults" })?.value?.lowercased()
+        model.useYTDLPDefaults = rawDefaults == "1" || rawDefaults == "true"
+        if model.useYTDLPDefaults { model.downloadOriginalFormat = false }
 
         selectedTab = .download
         model.download()

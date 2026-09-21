@@ -221,6 +221,45 @@ class ActualDownloaderTests(unittest.TestCase):
         self.assertNotIn("secret", json.dumps(events))
         self.assertEqual(options["format"], "best")
 
+    def test_ytdlp_defaults_omits_format_and_custom_selection_options(self):
+        from yt_dlp import YoutubeDL
+        options = {}
+        def extract(ydl, url, download=False):
+            options.update(ydl.params)
+            return {"id": "fixture", "title": "기본 선택"}
+        with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
+            result = json.loads(run(json.dumps({
+                "url": "https://example.com/defaults", "operation": "inspect",
+                "ytdlp_defaults": True, "custom_arguments": "--retries 9",
+                "video_extension": "webm", "quality": 480,
+            })))
+        self.assertTrue(result["ok"], result)
+        self.assertNotIn("format", options)
+        self.assertNotIn("extractor_args", options)
+        self.assertNotIn("postprocessors", options)
+        self.assertNotEqual(options.get("retries"), 9)
+
+    def test_ytdlp_defaults_returns_single_downloaded_file(self):
+        from yt_dlp import YoutubeDL
+        calls = []
+        def extract(ydl, url, download=False):
+            calls.append(download)
+            if download:
+                template = ydl.params["outtmpl"]["default"]
+                path = template.replace("%(ext)s", "mp4")
+                pathlib.Path(path).write_bytes(b"raw-default")
+            return {"id": "fixture", "title": "기본 선택", "ext": "mp4",
+                    "vcodec": "avc1", "acodec": "mp4a"}
+        with tempfile.TemporaryDirectory() as folder, \
+             patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
+            result = json.loads(run(json.dumps({
+                "url": "https://example.com/defaults", "operation": "download",
+                "directory": folder, "ytdlp_defaults": True,
+            })))
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(calls, [False, True])
+        self.assertTrue(result["file"].endswith(".mp4"))
+
     def test_javascriptcore_provider_registers_and_loads_bundled_solver(self):
         from yt_dlp import YoutubeDL
         from yt_dlp.extractor.youtube import YoutubeIE

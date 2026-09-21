@@ -15,6 +15,7 @@ final class DownloadModel {
     var preferredVideoExtension = ""
     var preferredAudioExtension = ""
     var downloadOriginalFormat = false
+    var useYTDLPDefaults = false
     var customArguments = ""
     private(set) var info: MediaInfo?
     private(set) var saved = MediaLibrary.load()
@@ -170,6 +171,7 @@ final class DownloadModel {
             format = SaveFormat(rawValue: request.format) ?? .mp4
             quality = Quality(rawValue: request.quality) ?? .best
             downloadOriginalFormat = request.originalFormat ?? false
+            useYTDLPDefaults = request.ytdlpDefaults ?? false
             info = nil
             start(operation: "download")
         } catch {
@@ -217,6 +219,7 @@ final class DownloadModel {
         let selectedVideoExtension = preferredVideoExtension
         let selectedAudioExtension = preferredAudioExtension
         let selectedOriginalFormat = downloadOriginalFormat
+        let selectedYTDLPDefaults = useYTDLPDefaults
         let selectedCustomArguments = customArguments
         engine.prepare()
         if operation == "download" {
@@ -269,6 +272,7 @@ final class DownloadModel {
                                                   preferredVideoExtension: selectedVideoExtension,
                                                   preferredAudioExtension: selectedAudioExtension,
                                                   originalFormat: selectedOriginalFormat,
+                                                  useYTDLPDefaults: selectedYTDLPDefaults,
                                                   customArguments: selectedCustomArguments) { [weak self] event in
                     guard let self, self.operationID == id, self.acceptEngineEvents, !self.cancellationRequested else { return }
                     if event.phase == "log" {
@@ -301,7 +305,12 @@ final class DownloadModel {
                 appendLog(result.audio != nil && selectedFormat == .mp4 ? "영상·오디오 MP4 결합 시작" : "파일 저장 준비")
                 publishActivity(force: true)
                 let output: URL
-                if selectedFormat == .mp4 {
+                if selectedYTDLPDefaults {
+                    guard let file = result.file else {
+                        throw AppFailure(message: "yt-dlp 기본 다운로드 결과 파일이 없습니다.")
+                    }
+                    output = URL(fileURLWithPath: file)
+                } else if selectedFormat == .mp4 {
                     guard let video = result.video else { throw AppFailure(message: "동영상 파일이 없습니다.") }
                     let videoURL = URL(fileURLWithPath: video)
                     if let audio = result.audio {
