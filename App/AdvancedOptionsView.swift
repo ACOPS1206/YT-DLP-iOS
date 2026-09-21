@@ -41,7 +41,7 @@ struct AdvancedOptionsView: View {
             } header: {
                 Text("추가 yt-dlp 인자")
             } footer: {
-                Text("지원: --socket-timeout, --retries, --fragment-retries, --user-agent, --referer, --add-header. 셸 명령, 출력 경로, 외부 프로그램 및 플러그인 옵션은 허용하지 않습니다.")
+                Text("지원: -t/--preset-alias (mp3, aac, mp4, mkv, sleep), --socket-timeout, --retries, --fragment-retries, --user-agent, --referer, --add-header. mp3/aac/mp4/mkv 프리셋은 FFmpeg 후처리를 요구할 수 있어 iOS에서 실패할 수 있습니다.")
             }
 
             if model.hasAdvancedOptions {
