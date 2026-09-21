@@ -367,6 +367,22 @@ def media_info(info):
             "duration": duration, "thumbnail": info.get("thumbnail")}
 
 
+def _single_download_file(folder):
+    candidates = []
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+        if not os.path.isfile(path):
+            continue
+        if name.endswith((".part", ".ytdl", ".temp")):
+            continue
+        candidates.append(path)
+    if not candidates:
+        raise ValueError("yt-dlp 기본 다운로드 결과 파일을 찾을 수 없습니다.")
+    if len(candidates) > 1:
+        raise ValueError("yt-dlp가 여러 원본 파일을 만들었습니다. 이 링크의 기본 선택은 FFmpeg 병합이 필요할 수 있습니다.")
+    return candidates[0]
+
+
 def run(request_json):
     import _ios_bridge as bridge
     def emit(phase, **values):
@@ -407,27 +423,44 @@ def run(request_json):
 
         url = validate_url(request["url"])
         emit("extracting")
+        ytdlp_defaults = bool(request.get("ytdlp_defaults", False))
+
+        def default_hook(event):
+            checkpoint()
+            total = event.get("total_bytes") or event.get("total_bytes_estimate")
+            value = min(1.0, event.get("downloaded_bytes", 0) / total) if total else None
+            if event.get("status") == "finished":
+                value = 1.0
+            emit("downloading", progress=value, speed=event.get("speed"), eta=event.get("eta"))
+
         options = {
             "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
-            "logger": Logger(),
-            # The app chooses compatible streams itself and combines them with
-            # AVFoundation. An explicit single-stream selector prevents yt-dlp
-            # from probing for an external ffmpeg executable on iOS.
-            "format": "best",
-            "cachedir": False, "socket_timeout": 15,
-            "retries": 2, "fragment_retries": 2, "hls_prefer_native": True,
+            "logger": Logger(), "cachedir": False,
             "js_runtimes": {}, "remote_components": [],
-            # web/web_safari may expose only SABR/storyboard entries without a
-            # GVS PO Token. Prefer a client that currently exposes direct media
-            # URLs on-device, and let our own select_streams() choose H.264/AAC.
-            "extractor_args": {"youtube": {"player_client": ["visionos", "android"]}},
-            # Keep metadata available even if YouTube temporarily exposes no
-            # downloadable A/V formats, so we can return our own clear error.
-            "ignore_no_formats_error": True,
-            "postprocessors": [], "fixup": "never",
             "age_limit": 17, "overwrites": True,
         }
-        options.update(parse_custom_arguments(request.get("custom_arguments", "")))
+        if ytdlp_defaults:
+            # Keep only app-integration settings. In particular, do not pass a
+            # format selector, quality ceiling, extension preference, custom
+            # yt-dlp arguments, extractor-client override, or postprocessor policy.
+            if request.get("operation") == "download":
+                folder = request["directory"]
+                os.makedirs(folder, exist_ok=True)
+                options["outtmpl"] = {"default": os.path.join(folder, "yt-dlp.%(ext)s")}
+                options["progress_hooks"] = [default_hook]
+        else:
+            options.update({
+                # The app chooses compatible streams itself and combines them
+                # with AVFoundation. "best" here only keeps extraction on a
+                # single stream while the app performs its own final selection.
+                "format": "best",
+                "socket_timeout": 15, "retries": 2, "fragment_retries": 2,
+                "hls_prefer_native": True,
+                "extractor_args": {"youtube": {"player_client": ["visionos", "android"]}},
+                "ignore_no_formats_error": True,
+                "postprocessors": [], "fixup": "never",
+            })
+            options.update(parse_custom_arguments(request.get("custom_arguments", "")))
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
             checkpoint()
@@ -442,6 +475,17 @@ def run(request_json):
             log("동영상 정보 확인 완료")
             if request["operation"] == "inspect":
                 return json.dumps({"ok": True, "info": summary, "version": __version__}, allow_nan=False)
+
+            if ytdlp_defaults:
+                log("yt-dlp 기본 선택 모드 · 포맷/화질 선택 인수 없이 다운로드")
+                downloaded = ydl.extract_info(url, download=True)
+                checkpoint()
+                if not downloaded:
+                    raise ValueError("yt-dlp 기본 다운로드 결과를 읽을 수 없습니다.")
+                path = _single_download_file(request["directory"])
+                log(f"yt-dlp 기본 다운로드 완료 · {(os.path.splitext(path)[1] or '원본').lstrip('.').upper()}")
+                return json.dumps({"ok": True, "info": summary, "version": __version__,
+                                   "file": path}, allow_nan=False)
 
             output_format = request.get("format", "MP4")
             if output_format not in ("MP4", "M4A"):
