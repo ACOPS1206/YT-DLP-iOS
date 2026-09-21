@@ -5,10 +5,12 @@ struct SharedDownloadRequest: Codable, Identifiable {
     let link: String
     let format: String
     let quality: Int
+    let originalFormat: Bool?
     let createdAt: Date
 
-    init(link: String, format: String, quality: Int) {
-        id = UUID(); self.link = link; self.format = format; self.quality = quality; createdAt = .now
+    init(link: String, format: String, quality: Int, originalFormat: Bool = false) {
+        id = UUID(); self.link = link; self.format = format; self.quality = quality
+        self.originalFormat = originalFormat; createdAt = .now
     }
 }
 
@@ -39,6 +41,7 @@ enum SharedLinkParser {
             URLQueryItem(name: "url", value: request.link),
             URLQueryItem(name: "format", value: request.format),
             URLQueryItem(name: "quality", value: String(request.quality)),
+            URLQueryItem(name: "original", value: (request.originalFormat ?? false) ? "1" : "0"),
         ]
         return components.url
     }
@@ -79,7 +82,6 @@ enum SharedInbox {
                   file.deletingPathExtension().lastPathComponent == request.id.uuidString,
                   SharedLinkParser.valid(request.link), ["MP4", "M4A"].contains(request.format),
                   [0, 480, 720, 1080].contains(request.quality) else {
-                // An invalid item cannot block all later shares.
                 try? FileManager.default.moveItem(at: file, to: file.appendingPathExtension("invalid"))
                 continue
             }
