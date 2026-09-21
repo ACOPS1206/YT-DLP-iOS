@@ -211,7 +211,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .disabled(model.isBusy || model.useYTDLPDefaults)
+            .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
 
             ContentCard {
                 Toggle(isOn: $model.downloadOriginalFormat) {
@@ -223,7 +223,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .disabled(model.isBusy || model.useYTDLPDefaults)
+                .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
             }
 
             ContentCard {
@@ -236,7 +236,7 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .disabled(model.isBusy)
+                .disabled(model.isBusy || model.customArgumentsActive)
                 .onChange(of: model.useYTDLPDefaults) { _, enabled in
                     if enabled { model.downloadOriginalFormat = false }
                 }
@@ -259,7 +259,7 @@ struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .disabled(model.isBusy || model.useYTDLPDefaults)
+                        .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
                     } else {
                         Text(model.downloadOriginalFormat ? "원본 오디오" : "AAC 우선")
                             .font(.subheadline)
@@ -290,10 +290,12 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(model.isBusy || model.useYTDLPDefaults)
+            .disabled(model.isBusy)
 
             Text(
-                model.useYTDLPDefaults
+                model.customArgumentsActive
+                    ? "직접 yt-dlp 인수 모드입니다. 입력한 인수가 포맷·화질·원본 포맷·기본 선택 등 메인 화면의 다운로드 옵션보다 우선합니다."
+                    : model.useYTDLPDefaults
                     ? "포맷·화질·확장자 선택을 넘기지 않고 yt-dlp의 기본 형식 선택으로 다운로드합니다. iOS에서 FFmpeg가 필요한 링크는 실패할 수 있습니다."
                     : model.downloadOriginalFormat
                     ? (model.format == .mp4

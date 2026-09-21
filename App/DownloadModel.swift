@@ -60,20 +60,24 @@ final class DownloadModel {
         return true
     }
 
+    var customArgumentsActive: Bool {
+        !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var hasAdvancedOptions: Bool {
         downloadSubtitles || !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || customArgumentsActive
     }
 
     var advancedOptionsSummary: String {
+        if customArgumentsActive { return "직접 인수" }
         var values: [String] = []
         if downloadSubtitles { values.append("자막") }
         if !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             values.append("확장자")
         }
-        if !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("추가 인자") }
         return values.isEmpty ? "기본값" : values.joined(separator: ", ")
     }
 
@@ -302,12 +306,16 @@ final class DownloadModel {
                 info = result.info
                 guard operation == "download" else { return }
                 phaseLabel = "파일을 준비하는 중…"; progress = nil; transferLabel = ""
-                appendLog(result.audio != nil && selectedFormat == .mp4 ? "영상·오디오 MP4 결합 시작" : "파일 저장 준비")
+                let selectedRawArguments = !selectedCustomArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let directYTDLPOutput = selectedRawArguments || selectedYTDLPDefaults
+                appendLog(directYTDLPOutput
+                          ? "yt-dlp 결과 파일 저장 준비"
+                          : (result.audio != nil && selectedFormat == .mp4 ? "영상·오디오 MP4 결합 시작" : "파일 저장 준비"))
                 publishActivity(force: true)
                 let output: URL
-                if selectedYTDLPDefaults {
+                if directYTDLPOutput {
                     guard let file = result.file else {
-                        throw AppFailure(message: "yt-dlp 기본 다운로드 결과 파일이 없습니다.")
+                        throw AppFailure(message: "yt-dlp 다운로드 결과 파일이 없습니다.")
                     }
                     output = URL(fileURLWithPath: file)
                 } else if selectedFormat == .mp4 {
@@ -325,10 +333,13 @@ final class DownloadModel {
                     output = URL(fileURLWithPath: audio)
                 }
                 try Task.checkCancellation()
+                let audioExtensions: Set<String> = ["m4a", "mp3", "aac", "opus", "ogg", "oga", "flac", "wav", "alac"]
+                let storedFormat: SaveFormat = directYTDLPOutput && audioExtensions.contains(output.pathExtension.lowercased())
+                    ? .m4a : .mp4
                 let item = try MediaLibrary.commit(source: output,
-                                                    subtitle: result.subtitle.map(URL.init(fileURLWithPath:)),
+                                                    subtitle: directYTDLPOutput ? nil : result.subtitle.map(URL.init(fileURLWithPath:)),
                                                     title: result.info?.title ?? "다운로드",
-                                                    format: selectedFormat, items: saved)
+                                                    format: directYTDLPOutput ? storedFormat : selectedFormat, items: saved)
                 saved.insert(item, at: 0); lastSaved = item
                 phaseLabel = "저장 완료"; progress = 1; transferLabel = ""
                 appendLog("보관함 저장 완료")

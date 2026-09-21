@@ -171,96 +171,15 @@ def select_streams(info, output_format, ceiling, video_extension="", audio_exten
         return fallback, None
     raise ValueError("선택한 화질에 맞는 저장 가능한 영상+오디오 원본이 없습니다.")
 
-PRESET_ALIASES = ("mp3", "aac", "mp4", "mkv", "sleep")
-
-
-def parse_custom_arguments(value):
-    """Translate a small, non-shell yt-dlp argument allowlist to API options."""
+def parse_custom_arguments(parse_options, value):
+    """Parse arbitrary yt-dlp CLI arguments into YoutubeDL API options."""
     tokens = shlex.split(value or "")
-    options = {}
-    headers = {}
-    presets = []
-    specs = {
-        "--socket-timeout": ("socket_timeout", "number"),
-        "--retries": ("retries", "count"),
-        "--fragment-retries": ("fragment_retries", "count"),
-        "--user-agent": ("User-Agent", "header_text"),
-        "--referer": ("Referer", "header_text"),
-        "--add-header": ("http_headers", "header"),
-        "-t": ("_preset_aliases", "preset"),
-        "--preset-alias": ("_preset_aliases", "preset"),
-    }
-    index = 0
-    while index < len(tokens):
-        token = tokens[index]
-        key, separator, inline = token.partition("=")
-        if key not in specs:
-            raise ValueError(f"지원하지 않는 추가 인자입니다: {key}")
-        if separator:
-            raw = inline
-        else:
-            index += 1
-            if index >= len(tokens) or tokens[index].startswith("--"):
-                raise ValueError(f"{key} 뒤에 값이 필요합니다.")
-            raw = tokens[index]
-        destination, kind = specs[key]
-        if kind == "preset":
-            preset = raw.strip().lower()
-            if preset not in PRESET_ALIASES:
-                raise ValueError(
-                    f"지원하지 않는 -t 프리셋입니다: {preset}. "
-                    f"사용 가능: {', '.join(PRESET_ALIASES)}")
-            presets.append(preset)
-        elif kind == "number":
-            try:
-                parsed = float(raw)
-            except ValueError as error:
-                raise ValueError(f"{key} 값은 숫자여야 합니다.") from error
-            if not 1 <= parsed <= 300:
-                raise ValueError(f"{key} 값은 1~300 사이여야 합니다.")
-            options[destination] = parsed
-        elif kind == "count":
-            if raw == "infinite":
-                options[destination] = float("inf")
-            else:
-                try:
-                    parsed = int(raw)
-                except ValueError as error:
-                    raise ValueError(f"{key} 값은 정수 또는 infinite여야 합니다.") from error
-                if not 0 <= parsed <= 100:
-                    raise ValueError(f"{key} 값은 0~100 사이여야 합니다.")
-                options[destination] = parsed
-        elif kind == "header":
-            name, colon, header_value = raw.partition(":")
-            if not colon or not name.strip() or "\n" in raw or "\r" in raw:
-                raise ValueError("--add-header 값은 '이름: 값' 형식이어야 합니다.")
-            headers[name.strip()] = header_value.strip()
-        elif kind == "header_text":
-            if not raw.strip() or "\n" in raw or "\r" in raw:
-                raise ValueError(f"{key} 값이 올바르지 않습니다.")
-            headers[destination] = raw
-        else:
-            if not raw.strip() or "\n" in raw or "\r" in raw:
-                raise ValueError(f"{key} 값이 올바르지 않습니다.")
-            options[destination] = raw
-        index += 1
-    if headers:
-        options["http_headers"] = headers
-    if presets:
-        options["_preset_aliases"] = presets
-    return options
-
-
-def resolve_preset_aliases(parse_options, presets):
-    """Resolve yt-dlp's built-in -t presets to the exact YoutubeDL API delta."""
-    if not presets:
+    if not tokens:
         return {}
-    arguments = []
-    for preset in presets:
-        arguments.extend(("-t", preset))
-    baseline = parse_options([]).ydl_opts
-    selected = parse_options(arguments).ydl_opts
-    return {key: value for key, value in selected.items() if baseline.get(key) != value}
+    try:
+        return parse_options(tokens).ydl_opts
+    except SystemExit as error:
+        raise ValueError("이 yt-dlp 인수는 앱 안에서 다운로드 옵션으로 사용할 수 없습니다.") from error
 
 
 def select_subtitle(info, languages, automatic=True):
@@ -394,20 +313,56 @@ def media_info(info):
             "duration": duration, "thumbnail": info.get("thumbnail")}
 
 
-def _single_download_file(folder):
+_SIDECAR_EXTENSIONS = {
+    "json", "description", "vtt", "srt", "ass", "lrc", "ttml", "srv1", "srv2", "srv3",
+    "jpg", "jpeg", "png", "webp", "gif", "avif", "webloc", "desktop", "url",
+}
+
+
+def _single_download_file(folder, info=None, ydl=None):
     candidates = []
-    for name in os.listdir(folder):
-        path = os.path.join(folder, name)
-        if not os.path.isfile(path):
-            continue
-        if name.endswith((".part", ".ytdl", ".temp")):
-            continue
-        candidates.append(path)
+
+    def add(path):
+        if not path:
+            return
+        path = os.path.abspath(os.path.expanduser(str(path)))
+        if os.path.isfile(path) and path not in candidates:
+            candidates.append(path)
+
+    if isinstance(info, dict):
+        add(info.get("filepath"))
+        add(info.get("_filename"))
+        for key in ("requested_downloads", "requested_formats"):
+            for item in info.get(key) or []:
+                if isinstance(item, dict):
+                    add(item.get("filepath"))
+                    add(item.get("_filename"))
+        for source, destination in (info.get("__files_to_move") or {}).items():
+            add(destination or source)
+        if ydl is not None:
+            try:
+                add(ydl.prepare_filename(info))
+            except Exception:
+                pass
+
+    if os.path.isdir(folder):
+        for root, _, names in os.walk(folder):
+            for name in names:
+                if name.endswith((".part", ".ytdl", ".temp")):
+                    continue
+                add(os.path.join(root, name))
+
+    media = [path for path in candidates
+             if os.path.splitext(path)[1].lower().lstrip(".") not in _SIDECAR_EXTENSIONS]
+    if len(media) == 1:
+        return media[0]
+    if len(media) > 1:
+        raise ValueError("yt-dlp가 여러 미디어 파일을 만들었습니다. 현재 보관함에는 한 번에 한 파일만 가져올 수 있습니다.")
+    if len(candidates) == 1:
+        return candidates[0]
     if not candidates:
-        raise ValueError("yt-dlp 기본 다운로드 결과 파일을 찾을 수 없습니다.")
-    if len(candidates) > 1:
-        raise ValueError("yt-dlp가 여러 원본 파일을 만들었습니다. 이 링크의 기본 선택은 FFmpeg 병합이 필요할 수 있습니다.")
-    return candidates[0]
+        raise ValueError("yt-dlp 다운로드 결과 파일을 찾을 수 없습니다.")
+    raise ValueError("yt-dlp가 여러 결과 파일을 만들었지만 저장할 미디어 파일을 하나로 결정할 수 없습니다.")
 
 
 def run(request_json):
@@ -450,7 +405,9 @@ def run(request_json):
 
         url = validate_url(request["url"])
         emit("extracting")
-        ytdlp_defaults = bool(request.get("ytdlp_defaults", False))
+        raw_arguments = str(request.get("custom_arguments", "") or "").strip()
+        raw_mode = bool(raw_arguments)
+        ytdlp_defaults = bool(request.get("ytdlp_defaults", False)) and not raw_mode
 
         def default_hook(event):
             checkpoint()
@@ -460,38 +417,47 @@ def run(request_json):
                 value = 1.0
             emit("downloading", progress=value, speed=event.get("speed"), eta=event.get("eta"))
 
-        options = {
-            "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
-            "logger": Logger(), "cachedir": False,
-            "js_runtimes": {}, "remote_components": [],
-            "age_limit": 17, "overwrites": True,
-        }
-        if ytdlp_defaults:
-            # Keep only app-integration settings. In particular, do not pass a
-            # format selector, quality ceiling, extension preference, custom
-            # yt-dlp arguments, extractor-client override, or postprocessor policy.
+        if raw_mode:
+            # A non-empty argument field is authoritative. Parse it with
+            # yt-dlp itself instead of translating or filtering individual flags.
+            options = parse_custom_arguments(parse_options, raw_arguments)
             if request.get("operation") == "download":
                 folder = request["directory"]
                 os.makedirs(folder, exist_ok=True)
-                options["outtmpl"] = {"default": os.path.join(folder, "yt-dlp.%(ext)s")}
+                paths = dict(options.get("paths") or {})
+                if not paths.get("home"):
+                    paths["home"] = folder
+                options["paths"] = paths
                 options["progress_hooks"] = [default_hook]
+            # The logger is app plumbing rather than download-selection policy.
+            options["logger"] = Logger()
         else:
-            options.update({
-                # The app chooses compatible streams itself and combines them
-                # with AVFoundation. "best" here only keeps extraction on a
-                # single stream while the app performs its own final selection.
-                "format": "best",
-                "socket_timeout": 15, "retries": 2, "fragment_retries": 2,
-                "hls_prefer_native": True,
-                "extractor_args": {"youtube": {"player_client": ["visionos", "android"]}},
-                "ignore_no_formats_error": True,
-                "postprocessors": [], "fixup": "never",
-            })
-            custom_options = parse_custom_arguments(request.get("custom_arguments", ""))
-            preset_aliases = custom_options.pop("_preset_aliases", [])
-            if preset_aliases:
-                options.update(resolve_preset_aliases(parse_options, preset_aliases))
-            options.update(custom_options)
+            options = {
+                "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
+                "logger": Logger(), "cachedir": False,
+                "js_runtimes": {}, "remote_components": [],
+                "age_limit": 17, "overwrites": True,
+            }
+            if ytdlp_defaults:
+                # Keep only app-integration settings. In particular, do not pass
+                # the app's format, quality, extension or subtitle preferences.
+                if request.get("operation") == "download":
+                    folder = request["directory"]
+                    os.makedirs(folder, exist_ok=True)
+                    options["outtmpl"] = {"default": os.path.join(folder, "yt-dlp.%(ext)s")}
+                    options["progress_hooks"] = [default_hook]
+            else:
+                options.update({
+                    # The app chooses compatible streams itself and combines them
+                    # with AVFoundation. "best" here only keeps extraction on a
+                    # single stream while the app performs its own final selection.
+                    "format": "best",
+                    "socket_timeout": 15, "retries": 2, "fragment_retries": 2,
+                    "hls_prefer_native": True,
+                    "extractor_args": {"youtube": {"player_client": ["visionos", "android"]}},
+                    "ignore_no_formats_error": True,
+                    "postprocessors": [], "fixup": "never",
+                })
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
             checkpoint()
@@ -507,13 +473,24 @@ def run(request_json):
             if request["operation"] == "inspect":
                 return json.dumps({"ok": True, "info": summary, "version": __version__}, allow_nan=False)
 
+            if raw_mode:
+                log("직접 yt-dlp 인수 모드 · 앱의 다른 다운로드 옵션은 무시합니다.")
+                downloaded = ydl.extract_info(url, download=True)
+                checkpoint()
+                if not downloaded:
+                    raise ValueError("yt-dlp 다운로드 결과를 읽을 수 없습니다.")
+                path = _single_download_file(request["directory"], downloaded, ydl)
+                log(f"직접 인수 다운로드 완료 · {(os.path.splitext(path)[1] or '원본').lstrip('.').upper()}")
+                return json.dumps({"ok": True, "info": summary, "version": __version__,
+                                   "file": path}, allow_nan=False)
+
             if ytdlp_defaults:
                 log("yt-dlp 기본 선택 모드 · 포맷/화질 선택 인수 없이 다운로드")
                 downloaded = ydl.extract_info(url, download=True)
                 checkpoint()
                 if not downloaded:
                     raise ValueError("yt-dlp 기본 다운로드 결과를 읽을 수 없습니다.")
-                path = _single_download_file(request["directory"])
+                path = _single_download_file(request["directory"], downloaded, ydl)
                 log(f"yt-dlp 기본 다운로드 완료 · {(os.path.splitext(path)[1] or '원본').lstrip('.').upper()}")
                 return json.dumps({"ok": True, "info": summary, "version": __version__,
                                    "file": path}, allow_nan=False)
