@@ -81,6 +81,7 @@ struct SavedMedia: Identifiable, Codable {
     let createdAt: Date
     let byteCount: Int64
     let subtitleFilename: String?
+    let fileExtension: String?
     var url: URL { MediaLibrary.documents.appendingPathComponent(filename) }
     var subtitleURL: URL? {
         guard let subtitleFilename else { return nil }
@@ -90,7 +91,8 @@ struct SavedMedia: Identifiable, Codable {
     var shareURLs: [URL] { [url] + (subtitleURL.map { [$0] } ?? []) }
     var sizeLabel: String { ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file) }
     var detailLabel: String {
-        [format.rawValue, sizeLabel, subtitleURL == nil ? nil : "자막 포함"]
+        let container = (fileExtension?.isEmpty == false ? fileExtension!.uppercased() : format.rawValue)
+        return [container, sizeLabel, subtitleURL == nil ? nil : "자막 포함"]
             .compactMap { $0 }.joined(separator: " · ")
     }
 }
