@@ -14,7 +14,8 @@ final class Engine {
 
     func run(operation: String, link: String, format: SaveFormat, quality: Quality, directory: URL,
              downloadSubtitles: Bool, subtitleLanguages: String, allowAutomaticSubtitles: Bool,
-             preferredVideoFormatID: String, preferredAudioFormatID: String, customArguments: String,
+             preferredVideoExtension: String, preferredAudioExtension: String, originalFormat: Bool,
+             customArguments: String,
              progress: @escaping @MainActor (EngineEvent) -> Void) async throws -> EngineResult {
         let payload: [String: Any] = ["operation": operation, "url": link,
                                      "format": format.rawValue, "quality": quality.rawValue,
@@ -22,8 +23,9 @@ final class Engine {
                                      "download_subtitles": downloadSubtitles,
                                      "subtitle_languages": subtitleLanguages,
                                      "automatic_subtitles": allowAutomaticSubtitles,
-                                     "video_format_id": preferredVideoFormatID,
-                                     "audio_format_id": preferredAudioFormatID,
+                                     "video_extension": preferredVideoExtension,
+                                     "audio_extension": preferredAudioExtension,
+                                     "original_format": originalFormat,
                                      "custom_arguments": customArguments]
         return try await execute(payload: payload, progress: progress)
     }
