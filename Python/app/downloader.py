@@ -171,11 +171,15 @@ def select_streams(info, output_format, ceiling, video_extension="", audio_exten
         return fallback, None
     raise ValueError("선택한 화질에 맞는 저장 가능한 영상+오디오 원본이 없습니다.")
 
+PRESET_ALIASES = ("mp3", "aac", "mp4", "mkv", "sleep")
+
+
 def parse_custom_arguments(value):
     """Translate a small, non-shell yt-dlp argument allowlist to API options."""
     tokens = shlex.split(value or "")
     options = {}
     headers = {}
+    presets = []
     specs = {
         "--socket-timeout": ("socket_timeout", "number"),
         "--retries": ("retries", "count"),
@@ -183,6 +187,8 @@ def parse_custom_arguments(value):
         "--user-agent": ("User-Agent", "header_text"),
         "--referer": ("Referer", "header_text"),
         "--add-header": ("http_headers", "header"),
+        "-t": ("_preset_aliases", "preset"),
+        "--preset-alias": ("_preset_aliases", "preset"),
     }
     index = 0
     while index < len(tokens):
@@ -198,7 +204,14 @@ def parse_custom_arguments(value):
                 raise ValueError(f"{key} 뒤에 값이 필요합니다.")
             raw = tokens[index]
         destination, kind = specs[key]
-        if kind == "number":
+        if kind == "preset":
+            preset = raw.strip().lower()
+            if preset not in PRESET_ALIASES:
+                raise ValueError(
+                    f"지원하지 않는 -t 프리셋입니다: {preset}. "
+                    f"사용 가능: {', '.join(PRESET_ALIASES)}")
+            presets.append(preset)
+        elif kind == "number":
             try:
                 parsed = float(raw)
             except ValueError as error:
@@ -233,7 +246,21 @@ def parse_custom_arguments(value):
         index += 1
     if headers:
         options["http_headers"] = headers
+    if presets:
+        options["_preset_aliases"] = presets
     return options
+
+
+def resolve_preset_aliases(parse_options, presets):
+    """Resolve yt-dlp's built-in -t presets to the exact YoutubeDL API delta."""
+    if not presets:
+        return {}
+    arguments = []
+    for preset in presets:
+        arguments.extend(("-t", preset))
+    baseline = parse_options([]).ydl_opts
+    selected = parse_options(arguments).ydl_opts
+    return {key: value for key, value in selected.items() if baseline.get(key) != value}
 
 
 def select_subtitle(info, languages, automatic=True):
@@ -331,7 +358,7 @@ def load_ytdlp():
         module = importlib.import_module("yt_dlp")
         version = importlib.import_module("yt_dlp.version").__version__
         importlib.import_module("ios_jsc")
-        return module.YoutubeDL, version
+        return module.YoutubeDL, module.parse_options, version
     except Exception as updated_error:
         root = os.environ.get("YTDLP_UPDATE_ROOT")
         active_update = root and any(
@@ -353,7 +380,7 @@ def load_ytdlp():
             module = importlib.import_module("yt_dlp")
             version = importlib.import_module("yt_dlp.version").__version__
             importlib.import_module("ios_jsc")
-            return module.YoutubeDL, version
+            return module.YoutubeDL, module.parse_options, version
         except Exception:
             raise updated_error
 
@@ -419,7 +446,7 @@ def run(request_json):
             version, changed = install_latest_engine(request["directory"], emit)
             return json.dumps({"ok": True, "version": version, "updated": changed}, allow_nan=False)
 
-        YoutubeDL, __version__ = load_ytdlp()
+        YoutubeDL, parse_options, __version__ = load_ytdlp()
 
         url = validate_url(request["url"])
         emit("extracting")
@@ -460,7 +487,11 @@ def run(request_json):
                 "ignore_no_formats_error": True,
                 "postprocessors": [], "fixup": "never",
             })
-            options.update(parse_custom_arguments(request.get("custom_arguments", "")))
+            custom_options = parse_custom_arguments(request.get("custom_arguments", ""))
+            preset_aliases = custom_options.pop("_preset_aliases", [])
+            if preset_aliases:
+                options.update(resolve_preset_aliases(parse_options, preset_aliases))
+            options.update(custom_options)
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=False)
             checkpoint()
