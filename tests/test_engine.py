@@ -24,13 +24,13 @@ from downloader import (install_latest_engine, parse_custom_arguments, run,
                         select_streams, select_subtitle, validate_url)
 
 
-def video(height, *, audio=False, codec="avc1.640028", drm=False):
-    return {"format_id": str(height), "height": height, "ext": "mp4", "vcodec": codec,
-            "acodec": "mp4a.40.2" if audio else "none", "protocol": "https", "has_drm": drm}
+def video(height, *, audio=False, codec="avc1.640028", drm=False, ext="mp4", protocol="https"):
+    return {"format_id": str(height), "height": height, "ext": ext, "vcodec": codec,
+            "acodec": "mp4a.40.2" if audio else "none", "protocol": protocol, "has_drm": drm}
 
 
-def audio():
-    return {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2",
+def audio(*, ext="m4a", codec="mp4a.40.2"):
+    return {"format_id": "140", "ext": ext, "vcodec": "none", "acodec": codec,
             "protocol": "https", "abr": 128}
 
 
@@ -62,22 +62,37 @@ class FormatSelectionTests(unittest.TestCase):
         self.assertIsNone(chosen)
         self.assertEqual(sound["ext"], "m4a")
 
-    def test_explicit_format_ids_override_automatic_choice(self):
-        low, high, sound = video(720), video(1080), audio()
-        low["format_id"] = "137-low"
-        sound["format_id"] = "audio-picked"
+    def test_extension_preference_selects_requested_container(self):
+        webm = video(720, audio=True, codec="vp9", ext="webm")
         chosen, chosen_audio = select_streams(
-            {"formats": [high, low, sound]}, "MP4", 480, "137-low", "audio-picked")
-        self.assertEqual(chosen["format_id"], "137-low")
-        self.assertEqual(chosen_audio["format_id"], "audio-picked")
+            {"formats": [video(1080, audio=True), webm]}, "MP4", 1080, "webm", "")
+        self.assertEqual(chosen["ext"], "webm")
+        self.assertIsNone(chosen_audio)
 
-    def test_invalid_or_incompatible_explicit_format_is_reported(self):
-        with self.assertRaisesRegex(ValueError, "찾을 수 없습니다"):
-            select_streams({"formats": [video(720), audio()]}, "MP4", 0, "missing", "")
-        av1 = video(1080, codec="av01.0.01M.08")
-        av1["format_id"] = "av1"
-        with self.assertRaisesRegex(ValueError, "저장 가능한"):
-            select_streams({"formats": [av1, audio()]}, "MP4", 0, "av1", "")
+    def test_invalid_or_missing_extension_is_reported(self):
+        with self.assertRaisesRegex(ValueError, "확장자"):
+            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "../mp4", "")
+        with self.assertRaisesRegex(ValueError, "\\.webm"):
+            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "webm", "")
+
+    def test_missing_h264_falls_back_to_complete_original(self):
+        reels = video(1080, audio=True, codec="hvc1.1.6.L120", ext="mp4", protocol="m3u8_native")
+        chosen, sound = select_streams({"formats": [reels]}, "MP4", 1080)
+        self.assertIs(chosen, reels)
+        self.assertIsNone(sound)
+
+    def test_original_format_prefers_complete_stream_and_keeps_extension(self):
+        webm = video(1080, audio=True, codec="vp9", ext="webm")
+        split = video(2160, audio=False, codec="vp9", ext="webm")
+        chosen, sound = select_streams({"formats": [webm, split, audio()]}, "MP4", 0, "", "", True)
+        self.assertEqual(chosen["height"], 1080)
+        self.assertEqual(chosen["ext"], "webm")
+        self.assertIsNone(sound)
+
+    def test_audio_falls_back_to_original_container(self):
+        opus = audio(ext="webm", codec="opus")
+        _, sound = select_streams({"formats": [opus]}, "M4A", 0)
+        self.assertEqual(sound["ext"], "webm")
 
     def test_custom_argument_allowlist(self):
         options = parse_custom_arguments(

@@ -20,16 +20,16 @@ struct AdvancedOptionsView: View {
             }
 
             Section {
-                TextField("자동 선택", text: $model.preferredVideoFormatID)
+                TextField("자동 선택 · 예: mp4, webm", text: $model.preferredVideoExtension)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                TextField("자동 선택", text: $model.preferredAudioFormatID)
+                TextField("자동 선택 · 예: m4a, webm", text: $model.preferredAudioExtension)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             } header: {
-                Text("형식 ID")
+                Text("원본 확장자")
             } footer: {
-                Text("첫 번째 칸은 비디오, 두 번째 칸은 오디오 형식 ID입니다. 비워 두면 앱이 H.264/AAC 형식을 자동 선택합니다.")
+                Text("첫 번째 칸은 비디오, 두 번째 칸은 오디오 확장자입니다. 점(.) 없이 입력하세요. 비워 두면 앱이 가장 적절한 형식을 자동 선택합니다.")
             }
 
             Section {

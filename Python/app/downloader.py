@@ -29,64 +29,147 @@ def validate_url(value):
     return value.strip()
 
 
-def compatible_video(fmt, ceiling):
+def _direct_format(fmt):
+    return (fmt.get("protocol") in ("https", "http", "m3u8", "m3u8_native", "http_dash_segments")
+            and not fmt.get("has_drm"))
+
+
+def _within_ceiling(fmt, ceiling):
     height = fmt.get("height") or 0
+    return not ceiling or (height > 0 and height <= ceiling)
+
+
+def _normalise_extension(value):
+    extension = (value or "").strip().lower().lstrip(".")
+    if not extension:
+        return ""
+    if not re.fullmatch(r"[a-z0-9]{1,10}", extension):
+        raise ValueError("확장자는 점(.) 없이 영문자와 숫자만 입력해 주세요.")
+    return extension
+
+
+def _has_video(fmt):
+    return (fmt.get("vcodec") or "none") != "none"
+
+
+def _has_audio(fmt):
+    return (fmt.get("acodec") or "none") != "none"
+
+
+def _video_key(fmt):
+    return (fmt.get("height") or 0, fmt.get("fps") or 0, fmt.get("tbr") or 0,
+            fmt.get("filesize") or fmt.get("filesize_approx") or 0)
+
+
+def _audio_key(fmt):
+    return (fmt.get("abr") or 0, fmt.get("tbr") or 0, fmt.get("asr") or 0)
+
+
+def compatible_video(fmt, ceiling):
     codec = fmt.get("vcodec") or ""
     acodec = fmt.get("acodec") or "none"
     return (fmt.get("ext") == "mp4"
             and codec.startswith(("avc1", "h264"))
             and (acodec == "none" or acodec.startswith(("mp4a", "aac")))
-            and fmt.get("protocol") in ("https", "http")
-            and not fmt.get("has_drm")
-            and (not ceiling or (height > 0 and height <= ceiling)))
+            and _direct_format(fmt)
+            and _within_ceiling(fmt, ceiling))
 
 
 def compatible_audio(fmt):
     return (fmt.get("ext") in ("m4a", "mp4")
-            and (fmt.get("vcodec") or "none") == "none"
+            and not _has_video(fmt)
             and (fmt.get("acodec") or "").startswith(("mp4a", "aac"))
-            and fmt.get("protocol") in ("https", "http")
-            and not fmt.get("has_drm"))
+            and _direct_format(fmt))
 
 
-def _format_by_id(formats, format_id, predicate, kind):
-    if not format_id:
-        return None
-    match = next((fmt for fmt in formats if str(fmt.get("format_id")) == str(format_id)), None)
-    if not match:
-        raise ValueError(f"{kind} 형식 ID {format_id}을(를) 찾을 수 없습니다.")
-    if not predicate(match):
-        raise ValueError(f"형식 ID {format_id}은(는) iOS에서 저장 가능한 {kind} 형식이 아닙니다.")
-    return match
+def _generic_video(fmt, ceiling, extension="", require_audio=None):
+    if not (_has_video(fmt) and _direct_format(fmt) and _within_ceiling(fmt, ceiling)):
+        return False
+    if extension and (fmt.get("ext") or "").lower() != extension:
+        return False
+    if require_audio is True and not _has_audio(fmt):
+        return False
+    if require_audio is False and _has_audio(fmt):
+        return False
+    return True
 
 
-def select_streams(info, output_format, ceiling, video_format_id="", audio_format_id=""):
+def _generic_audio(fmt, extension=""):
+    if _has_video(fmt) or not _has_audio(fmt) or not _direct_format(fmt):
+        return False
+    return not extension or (fmt.get("ext") or "").lower() == extension
+
+
+def select_streams(info, output_format, ceiling, video_extension="", audio_extension="", original_format=False):
     formats = info.get("formats") or [info]
-    audio = (_format_by_id(formats, audio_format_id, compatible_audio, "오디오")
-             or max((fmt for fmt in formats if compatible_audio(fmt)),
-                    key=lambda fmt: (fmt.get("abr") or 0, fmt.get("tbr") or 0), default=None))
-    if output_format == "M4A":
-        if not audio:
-            raise ValueError("이 링크에는 저장 가능한 M4A 오디오가 없습니다.")
-        return None, audio
-    video = (_format_by_id(formats, video_format_id,
-                           lambda fmt: compatible_video(fmt, 0), "비디오")
-             or max((fmt for fmt in formats if compatible_video(fmt, ceiling)),
-                    key=lambda fmt: (fmt.get("height") or 0, fmt.get("fps") or 0, fmt.get("tbr") or 0),
-                    default=None))
-    if not video:
-        raise ValueError("선택한 화질에 맞는 H.264 MP4 원본이 없습니다.")
-    if video.get("acodec") not in (None, "none") and not audio_format_id:
-        return video, None
-    if not audio:
-        # Prefer a complete compatible video over silently losing its sound.
-        complete = [fmt for fmt in formats if compatible_video(fmt, ceiling)
-                    and fmt.get("acodec") not in (None, "none")]
-        if complete:
-            return max(complete, key=lambda fmt: (fmt.get("height") or 0, fmt.get("tbr") or 0)), None
-        raise ValueError("영상과 함께 저장할 호환 오디오가 없습니다.")
-    return video, audio
+    video_extension = _normalise_extension(video_extension)
+    audio_extension = _normalise_extension(audio_extension)
 
+    if output_format == "M4A":
+        if original_format or audio_extension:
+            candidates = [fmt for fmt in formats if _generic_audio(fmt, audio_extension)]
+            if not candidates:
+                label = f".{audio_extension}" if audio_extension else "원본"
+                raise ValueError(f"이 링크에는 저장 가능한 {label} 오디오가 없습니다.")
+            return None, max(candidates, key=_audio_key)
+
+        audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
+        if audio:
+            return None, audio
+        fallback = max((fmt for fmt in formats if _generic_audio(fmt)), key=_audio_key, default=None)
+        if fallback:
+            return None, fallback
+        raise ValueError("이 링크에는 저장 가능한 오디오 원본이 없습니다.")
+
+    if original_format:
+        candidates = [fmt for fmt in formats
+                      if _generic_video(fmt, ceiling, video_extension, require_audio=True)]
+        if not candidates:
+            label = f".{video_extension}" if video_extension else "원본"
+            raise ValueError(f"선택한 화질에 맞는 영상+오디오 {label} 스트림이 없습니다.")
+        return max(candidates, key=_video_key), None
+
+    if video_extension and video_extension != "mp4":
+        candidates = [fmt for fmt in formats
+                      if _generic_video(fmt, ceiling, video_extension, require_audio=True)]
+        if not candidates:
+            raise ValueError(f"선택한 화질에 맞는 .{video_extension} 영상+오디오 원본이 없습니다.")
+        return max(candidates, key=_video_key), None
+
+    if audio_extension:
+        audio_candidates = [fmt for fmt in formats if _generic_audio(fmt, audio_extension)]
+        audio = max(audio_candidates, key=_audio_key, default=None)
+    else:
+        audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
+
+    h264 = max((fmt for fmt in formats if compatible_video(fmt, ceiling)),
+               key=_video_key, default=None)
+    if h264:
+        if _has_audio(h264):
+            return h264, None
+        if audio:
+            return h264, audio
+        complete_h264 = max((fmt for fmt in formats
+                             if compatible_video(fmt, ceiling) and _has_audio(fmt)),
+                            key=_video_key, default=None)
+        if complete_h264:
+            return complete_h264, None
+
+    complete_mp4 = max((fmt for fmt in formats
+                        if _generic_video(fmt, ceiling, "mp4", require_audio=True)),
+                       key=_video_key, default=None)
+    if complete_mp4:
+        return complete_mp4, None
+
+    if video_extension == "mp4":
+        raise ValueError("선택한 화질에 맞는 MP4 영상+오디오 원본이 없습니다.")
+
+    fallback = max((fmt for fmt in formats
+                    if _generic_video(fmt, ceiling, require_audio=True)),
+                   key=_video_key, default=None)
+    if fallback:
+        return fallback, None
+    raise ValueError("선택한 화질에 맞는 저장 가능한 영상+오디오 원본이 없습니다.")
 
 def parse_custom_arguments(value):
     """Translate a small, non-shell yt-dlp argument allowlist to API options."""
@@ -332,7 +415,7 @@ def run(request_json):
             # from probing for an external ffmpeg executable on iOS.
             "format": "best",
             "cachedir": False, "socket_timeout": 15,
-            "retries": 2, "fragment_retries": 2,
+            "retries": 2, "fragment_retries": 2, "hls_prefer_native": True,
             "js_runtimes": {}, "remote_components": [],
             # web/web_safari may expose only SABR/storyboard entries without a
             # GVS PO Token. Prefer a client that currently exposes direct media
@@ -363,13 +446,25 @@ def run(request_json):
             output_format = request.get("format", "MP4")
             if output_format not in ("MP4", "M4A"):
                 raise ValueError("지원하지 않는 저장 형식입니다.")
+            original_format = bool(request.get("original_format", False))
             video, audio = select_streams(info, output_format, int(request.get("quality", 0)),
-                                          request.get("video_format_id", "").strip(),
-                                          request.get("audio_format_id", "").strip())
+                                          request.get("video_extension", ""),
+                                          request.get("audio_extension", ""),
+                                          original_format)
             if video:
-                log(f"선택한 원본: H.264 MP4 · {video.get('height') or '?'}p")
+                extension = (video.get("ext") or "?").upper()
+                codec = video.get("vcodec") or "unknown"
+                height = video.get("height") or "?"
+                if original_format:
+                    log(f"원본 포맷 선택: {extension} · {height}p")
+                elif extension != "MP4" or not codec.startswith(("avc1", "h264")):
+                    log(f"H.264 MP4 대신 {extension} 원본으로 자동 대체 · {height}p", "warning")
+                else:
+                    log(f"선택한 원본: H.264 MP4 · {height}p")
             if audio:
-                log("선택한 오디오: 원본 AAC")
+                extension = (audio.get("ext") or "?").upper()
+                codec = audio.get("acodec") or "unknown"
+                log(f"선택한 오디오: {extension} · {codec}")
             folder = request["directory"]
             os.makedirs(folder, exist_ok=True)
             streams = [(name, stream) for name, stream in (("video", video), ("audio", audio)) if stream]

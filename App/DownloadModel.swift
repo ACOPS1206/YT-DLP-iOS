@@ -12,8 +12,9 @@ final class DownloadModel {
     var downloadSubtitles = false
     var subtitleLanguages = "ko,en"
     var allowAutomaticSubtitles = true
-    var preferredVideoFormatID = ""
-    var preferredAudioFormatID = ""
+    var preferredVideoExtension = ""
+    var preferredAudioExtension = ""
+    var downloadOriginalFormat = false
     var customArguments = ""
     private(set) var info: MediaInfo?
     private(set) var saved = MediaLibrary.load()
@@ -59,17 +60,17 @@ final class DownloadModel {
     }
 
     var hasAdvancedOptions: Bool {
-        downloadSubtitles || !preferredVideoFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !preferredAudioFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        downloadSubtitles || !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var advancedOptionsSummary: String {
         var values: [String] = []
         if downloadSubtitles { values.append("자막") }
-        if !preferredVideoFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !preferredAudioFormatID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            values.append("형식 ID")
+        if !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            values.append("확장자")
         }
         if !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { values.append("추가 인자") }
         return values.isEmpty ? "기본값" : values.joined(separator: ", ")
@@ -79,8 +80,8 @@ final class DownloadModel {
         downloadSubtitles = false
         subtitleLanguages = "ko,en"
         allowAutomaticSubtitles = true
-        preferredVideoFormatID = ""
-        preferredAudioFormatID = ""
+        preferredVideoExtension = ""
+        preferredAudioExtension = ""
         customArguments = ""
     }
 
@@ -168,6 +169,7 @@ final class DownloadModel {
             link = request.link
             format = SaveFormat(rawValue: request.format) ?? .mp4
             quality = Quality(rawValue: request.quality) ?? .best
+            downloadOriginalFormat = request.originalFormat ?? false
             info = nil
             start(operation: "download")
         } catch {
@@ -212,8 +214,9 @@ final class DownloadModel {
         let selectedSubtitles = downloadSubtitles
         let selectedSubtitleLanguages = subtitleLanguages
         let selectedAutomaticSubtitles = allowAutomaticSubtitles
-        let selectedVideoFormatID = preferredVideoFormatID
-        let selectedAudioFormatID = preferredAudioFormatID
+        let selectedVideoExtension = preferredVideoExtension
+        let selectedAudioExtension = preferredAudioExtension
+        let selectedOriginalFormat = downloadOriginalFormat
         let selectedCustomArguments = customArguments
         engine.prepare()
         if operation == "download" {
@@ -263,8 +266,9 @@ final class DownloadModel {
                                                   downloadSubtitles: selectedSubtitles,
                                                   subtitleLanguages: selectedSubtitleLanguages,
                                                   allowAutomaticSubtitles: selectedAutomaticSubtitles,
-                                                  preferredVideoFormatID: selectedVideoFormatID,
-                                                  preferredAudioFormatID: selectedAudioFormatID,
+                                                  preferredVideoExtension: selectedVideoExtension,
+                                                  preferredAudioExtension: selectedAudioExtension,
+                                                  originalFormat: selectedOriginalFormat,
                                                   customArguments: selectedCustomArguments) { [weak self] event in
                     guard let self, self.operationID == id, self.acceptEngineEvents, !self.cancellationRequested else { return }
                     if event.phase == "log" {
@@ -299,9 +303,14 @@ final class DownloadModel {
                 let output: URL
                 if selectedFormat == .mp4 {
                     guard let video = result.video else { throw AppFailure(message: "동영상 파일이 없습니다.") }
-                    output = folder.appendingPathComponent("output.mp4")
-                    try await MediaAssembler.assemble(video: URL(fileURLWithPath: video),
-                                                      audio: result.audio.map { URL(fileURLWithPath: $0) }, destination: output)
+                    let videoURL = URL(fileURLWithPath: video)
+                    if let audio = result.audio {
+                        output = folder.appendingPathComponent("output.mp4")
+                        try await MediaAssembler.assemble(video: videoURL,
+                                                          audio: URL(fileURLWithPath: audio), destination: output)
+                    } else {
+                        output = videoURL
+                    }
                 } else {
                     guard let audio = result.audio else { throw AppFailure(message: "오디오 파일이 없습니다.") }
                     output = URL(fileURLWithPath: audio)

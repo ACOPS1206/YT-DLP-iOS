@@ -21,7 +21,10 @@ enum MediaLibrary {
         let id = UUID()
         let cleaned = title.components(separatedBy: CharacterSet(charactersIn: "/\\:?%*|\"<>\n\r"))
             .joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = "\(String((cleaned.isEmpty ? "다운로드" : cleaned).prefix(80)))-\(id.uuidString.prefix(8)).\(format.rawValue.lowercased())"
+        let sourceExtension = source.pathExtension.lowercased()
+        let validExtension = sourceExtension.range(of: #"^[a-z0-9]{1,10}$"#, options: .regularExpression) != nil
+            ? sourceExtension : format.rawValue.lowercased()
+        let name = "\(String((cleaned.isEmpty ? "다운로드" : cleaned).prefix(80)))-\(id.uuidString.prefix(8)).\(validExtension)"
         let destination = documents.appendingPathComponent(name)
         try FileManager.default.moveItem(at: source, to: destination)
         var subtitleName: String?
@@ -38,7 +41,8 @@ enum MediaLibrary {
         }
         let count = (try destination.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
         let item = SavedMedia(id: id, title: title, filename: name, format: format,
-                             createdAt: .now, byteCount: Int64(count), subtitleFilename: subtitleName)
+                             createdAt: .now, byteCount: Int64(count), subtitleFilename: subtitleName,
+                             fileExtension: validExtension)
         do { try persist([item] + items) }
         catch {
             try? FileManager.default.removeItem(at: destination)
