@@ -421,15 +421,16 @@ def run(request_json):
             # A non-empty argument field is authoritative. Parse it with
             # yt-dlp itself instead of translating or filtering individual flags.
             options = parse_custom_arguments(parse_options, raw_arguments)
-            folder = request["directory"]
-            os.makedirs(folder, exist_ok=True)
-            paths = dict(options.get("paths") or {})
-            if not paths.get("home"):
-                paths["home"] = folder
-            options["paths"] = paths
-            # These hooks are app plumbing rather than download-selection policy.
+            if request.get("operation") == "download":
+                folder = request["directory"]
+                os.makedirs(folder, exist_ok=True)
+                paths = dict(options.get("paths") or {})
+                if not paths.get("home"):
+                    paths["home"] = folder
+                options["paths"] = paths
+                options["progress_hooks"] = [default_hook]
+            # The logger is app plumbing rather than download-selection policy.
             options["logger"] = Logger()
-            options["progress_hooks"] = [default_hook]
         else:
             options = {
                 "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
