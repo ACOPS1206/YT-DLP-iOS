@@ -178,6 +178,19 @@ def select_streams(info, output_format, ceiling, output_extension=""):
         if audio:
             return ios_candidate, audio
 
+    # Some extractors do not report a precise codec name. If the container is
+    # one AVFoundation can normally open, still try a split video+audio pair
+    # instead of rejecting the link at metadata-selection time.
+    generic_merge = max((fmt for fmt in formats
+                         if _generic_video(fmt, ceiling)
+                         and (fmt.get("ext") or "").lower() in merge_extensions),
+                        key=_video_key, default=None)
+    if generic_merge:
+        if _has_audio(generic_merge):
+            return generic_merge, None
+        if audio:
+            return generic_merge, audio
+
     complete = max((fmt for fmt in formats
                     if _generic_video(fmt, ceiling,
                                       "mp4" if output_extension == "mp4" else "",
@@ -426,7 +439,7 @@ def run(request_json):
         url = validate_url(request["url"])
         emit("extracting")
         raw_arguments = str(request.get("custom_arguments", "") or "").strip()
-        preset_alias = str(request.get("preset_alias", "") or "").strip().lower()
+        preset_alias = "" if raw_arguments else str(request.get("preset_alias", "") or "").strip().lower()
         direct_mode = bool(raw_arguments or preset_alias)
         ytdlp_defaults = bool(request.get("ytdlp_defaults", False)) and not direct_mode
 
