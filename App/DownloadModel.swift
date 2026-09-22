@@ -9,12 +9,13 @@ final class DownloadModel {
     var link = ""
     var format: SaveFormat = .mp4
     var quality: Quality = .best
+    var customQuality = ""
+    var outputFormatPreset: OutputFormatPreset = .automatic
+    var customOutputFormat = ""
+    var presetAlias: YTDLPPreset = .none
     var downloadSubtitles = false
     var subtitleLanguages = "ko,en"
     var allowAutomaticSubtitles = true
-    var preferredVideoExtension = ""
-    var preferredAudioExtension = ""
-    var downloadOriginalFormat = false
     var useYTDLPDefaults = false
     var customArguments = ""
     private(set) var info: MediaInfo?
@@ -64,29 +65,41 @@ final class DownloadModel {
         !customArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var directYTDLPMode: Bool {
+        customArgumentsActive || presetAlias != .none
+    }
+
+    var effectiveQuality: Int {
+        if quality == .custom {
+            guard let value = Int(customQuality.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  (144...4320).contains(value) else { return 0 }
+            return value
+        }
+        return max(0, quality.rawValue)
+    }
+
+    var effectiveOutputExtension: String {
+        let raw = outputFormatPreset == .custom ? customOutputFormat : outputFormatPreset.rawValue
+        if outputFormatPreset == .automatic { return "" }
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard value.range(of: "^[a-z0-9]{1,10}$", options: .regularExpression) != nil else { return "" }
+        return value
+    }
+
     var hasAdvancedOptions: Bool {
-        downloadSubtitles || !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || customArgumentsActive
+        downloadSubtitles || customArgumentsActive
     }
 
     var advancedOptionsSummary: String {
         if customArgumentsActive { return "직접 인수" }
-        var values: [String] = []
-        if downloadSubtitles { values.append("자막") }
-        if !preferredVideoExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !preferredAudioExtension.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            values.append("확장자")
-        }
-        return values.isEmpty ? "기본값" : values.joined(separator: ", ")
+        return downloadSubtitles ? "자막" : "기본값"
     }
 
     func resetAdvancedOptions() {
         downloadSubtitles = false
         subtitleLanguages = "ko,en"
         allowAutomaticSubtitles = true
-        preferredVideoExtension = ""
-        preferredAudioExtension = ""
         customArguments = ""
     }
 
@@ -174,7 +187,6 @@ final class DownloadModel {
             link = request.link
             format = SaveFormat(rawValue: request.format) ?? .mp4
             quality = Quality(rawValue: request.quality) ?? .best
-            downloadOriginalFormat = request.originalFormat ?? false
             useYTDLPDefaults = request.ytdlpDefaults ?? false
             info = nil
             start(operation: "download")
@@ -216,13 +228,13 @@ final class DownloadModel {
         acceptEngineEvents = true
         appendLog(operation == "download" ? "다운로드 준비" : "동영상 정보 확인 시작")
         let sourceLink = link.trimmingCharacters(in: .whitespacesAndNewlines)
-        let selectedFormat = format; let selectedQuality = quality
+        let selectedFormat = format
+        let selectedQuality = effectiveQuality
+        let selectedOutputExtension = effectiveOutputExtension
+        let selectedPresetAlias = presetAlias.rawValue
         let selectedSubtitles = downloadSubtitles
         let selectedSubtitleLanguages = subtitleLanguages
         let selectedAutomaticSubtitles = allowAutomaticSubtitles
-        let selectedVideoExtension = preferredVideoExtension
-        let selectedAudioExtension = preferredAudioExtension
-        let selectedOriginalFormat = downloadOriginalFormat
         let selectedYTDLPDefaults = useYTDLPDefaults
         let selectedCustomArguments = customArguments
         engine.prepare()
@@ -270,12 +282,11 @@ final class DownloadModel {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 let result = try await engine.run(operation: operation, link: sourceLink, format: selectedFormat,
                                                   quality: selectedQuality, directory: folder,
+                                                  outputExtension: selectedOutputExtension,
+                                                  presetAlias: selectedPresetAlias,
                                                   downloadSubtitles: selectedSubtitles,
                                                   subtitleLanguages: selectedSubtitleLanguages,
                                                   allowAutomaticSubtitles: selectedAutomaticSubtitles,
-                                                  preferredVideoExtension: selectedVideoExtension,
-                                                  preferredAudioExtension: selectedAudioExtension,
-                                                  originalFormat: selectedOriginalFormat,
                                                   useYTDLPDefaults: selectedYTDLPDefaults,
                                                   customArguments: selectedCustomArguments) { [weak self] event in
                     guard let self, self.operationID == id, self.acceptEngineEvents, !self.cancellationRequested else { return }
@@ -307,7 +318,8 @@ final class DownloadModel {
                 guard operation == "download" else { return }
                 phaseLabel = "파일을 준비하는 중…"; progress = nil; transferLabel = ""
                 let selectedRawArguments = !selectedCustomArguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                let directYTDLPOutput = selectedRawArguments || selectedYTDLPDefaults
+                let selectedPreset = !selectedPresetAlias.isEmpty
+                let directYTDLPOutput = selectedRawArguments || selectedPreset || selectedYTDLPDefaults
                 appendLog(directYTDLPOutput
                           ? "yt-dlp 결과 파일 저장 준비"
                           : (result.audio != nil && selectedFormat == .mp4 ? "영상·오디오 MP4 결합 시작" : "파일 저장 준비"))
@@ -321,10 +333,17 @@ final class DownloadModel {
                 } else if selectedFormat == .mp4 {
                     guard let video = result.video else { throw AppFailure(message: "동영상 파일이 없습니다.") }
                     let videoURL = URL(fileURLWithPath: video)
+                    let requestedContainer = selectedOutputExtension
+                    let mergeContainer = ["mp4", "mov"].contains(requestedContainer)
+                        ? requestedContainer : (result.audio == nil ? "" : "mp4")
                     if let audio = result.audio {
-                        output = folder.appendingPathComponent("output.mp4")
+                        output = folder.appendingPathComponent("output.\(mergeContainer.isEmpty ? "mp4" : mergeContainer)")
                         try await MediaAssembler.assemble(video: videoURL,
                                                           audio: URL(fileURLWithPath: audio), destination: output)
+                    } else if !mergeContainer.isEmpty,
+                              videoURL.pathExtension.lowercased() != mergeContainer {
+                        output = folder.appendingPathComponent("output.\(mergeContainer)")
+                        try await MediaAssembler.assemble(video: videoURL, audio: nil, destination: output)
                     } else {
                         output = videoURL
                     }
