@@ -10,9 +10,42 @@ enum SaveFormat: String, CaseIterable, Identifiable, Codable {
 }
 
 enum Quality: Int, CaseIterable, Identifiable, Codable {
-    case best = 0, p1080 = 1080, p720 = 720, p480 = 480
+    case best = 0
+    case p2160 = 2160, p1440 = 1440, p1080 = 1080, p720 = 720, p480 = 480, p360 = 360
+    case custom = -1
+
     var id: Int { rawValue }
-    var title: String { self == .best ? "최고 화질" : "\(rawValue)p 이하" }
+    var title: String {
+        switch self {
+        case .best: "최고 품질"
+        case .custom: "직접 입력"
+        default: "\(rawValue)p 이하"
+        }
+    }
+}
+
+enum OutputFormatPreset: String, CaseIterable, Identifiable {
+    case automatic, mp4, mov, webm, mkv, m4a, mp3, aac, flac, wav, opus, custom
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .automatic: "자동"
+        case .custom: "직접 입력"
+        default: rawValue.uppercased()
+        }
+    }
+
+    static let videoChoices: [Self] = [.automatic, .mp4, .mov, .webm, .mkv, .custom]
+    static let audioChoices: [Self] = [.automatic, .m4a, .mp3, .aac, .flac, .wav, .opus, .custom]
+}
+
+enum YTDLPPreset: String, CaseIterable, Identifiable {
+    case none = ""
+    case mp4, mkv, mp3, aac, sleep
+
+    var id: String { rawValue }
+    var title: String { self == .none ? "사용 안 함" : rawValue.uppercased() }
 }
 
 enum Appearance: String, CaseIterable, Identifiable {
