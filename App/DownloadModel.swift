@@ -187,6 +187,11 @@ final class DownloadModel {
             link = request.link
             format = SaveFormat(rawValue: request.format) ?? .mp4
             quality = Quality(rawValue: request.quality) ?? .best
+            customQuality = ""
+            outputFormatPreset = .automatic
+            customOutputFormat = ""
+            presetAlias = .none
+            customArguments = ""
             useYTDLPDefaults = request.ytdlpDefaults ?? false
             info = nil
             start(operation: "download")
