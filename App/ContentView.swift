@@ -241,34 +241,6 @@ struct ContentView: View {
                 }
             }
 
-            ContentCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Label("-t 프리셋", systemImage: "terminal")
-                            .font(.subheadline)
-
-                        Spacer()
-
-                        Picker("-t 프리셋", selection: $model.presetAlias) {
-                            ForEach(YTDLPPreset.allCases) { preset in
-                                Text(preset.title).tag(preset)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                    }
-
-                    if model.presetAlias != .none {
-                        Text("yt-dlp의 -t \(model.presetAlias.rawValue) 프리셋을 직접 사용합니다. 다른 메인 다운로드 옵션은 무시됩니다.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(model.isBusy || model.customArgumentsActive)
-                .onChange(of: model.presetAlias) { _, preset in
-                    if preset != .none { model.useYTDLPDefaults = false }
-                }
-            }
-
             if model.format == .mp4 {
                 ContentCard {
                     VStack(alignment: .leading, spacing: 12) {
