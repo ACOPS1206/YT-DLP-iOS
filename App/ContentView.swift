@@ -502,6 +502,10 @@ struct ContentView: View {
         }
 
         model.link = link
+        model.outputFormatPreset = .automatic
+        model.customOutputFormat = ""
+        model.presetAlias = .none
+        model.customArguments = ""
 
         if let rawFormat = components.queryItems?.first(where: { $0.name == "format" })?.value,
            let format = SaveFormat(rawValue: rawFormat) {
