@@ -88,18 +88,22 @@ final class DownloadModel {
     }
 
     var hasAdvancedOptions: Bool {
-        downloadSubtitles || customArgumentsActive
+        downloadSubtitles || presetAlias != .none || customArgumentsActive
     }
 
     var advancedOptionsSummary: String {
         if customArgumentsActive { return "직접 인수" }
-        return downloadSubtitles ? "자막" : "기본값"
+        var values: [String] = []
+        if presetAlias != .none { values.append("-t \(presetAlias.rawValue)") }
+        if downloadSubtitles { values.append("자막") }
+        return values.isEmpty ? "기본값" : values.joined(separator: ", ")
     }
 
     func resetAdvancedOptions() {
         downloadSubtitles = false
         subtitleLanguages = "ko,en"
         allowAutomaticSubtitles = true
+        presetAlias = .none
         customArguments = ""
     }
 
