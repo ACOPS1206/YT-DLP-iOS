@@ -66,9 +66,9 @@ def _audio_key(fmt):
 
 
 def compatible_video(fmt, ceiling):
-    codec = fmt.get("vcodec") or ""
-    acodec = fmt.get("acodec") or "none"
-    return (fmt.get("ext") == "mp4"
+    codec = (fmt.get("vcodec") or "").lower()
+    acodec = (fmt.get("acodec") or "none").lower()
+    return ((fmt.get("ext") or "").lower() == "mp4"
             and codec.startswith(("avc1", "h264"))
             and (acodec == "none" or acodec.startswith(("mp4a", "aac")))
             and _direct_format(fmt)
@@ -76,9 +76,28 @@ def compatible_video(fmt, ceiling):
 
 
 def compatible_audio(fmt):
-    return (fmt.get("ext") in ("m4a", "mp4")
+    codec = (fmt.get("acodec") or "").lower()
+    return ((fmt.get("ext") or "").lower() in ("m4a", "mp4", "aac")
             and not _has_video(fmt)
-            and (fmt.get("acodec") or "").startswith(("mp4a", "aac"))
+            and codec.startswith(("mp4a", "aac", "alac"))
+            and _direct_format(fmt))
+
+
+def ios_video(fmt, ceiling, extensions=("mp4", "mov", "m4v")):
+    codec = (fmt.get("vcodec") or "").lower()
+    return (_has_video(fmt)
+            and (fmt.get("ext") or "").lower() in extensions
+            and codec.startswith(("avc1", "h264", "hvc1", "hev1", "hevc", "av01"))
+            and _direct_format(fmt)
+            and _within_ceiling(fmt, ceiling))
+
+
+def ios_audio(fmt):
+    codec = (fmt.get("acodec") or "").lower()
+    return (not _has_video(fmt)
+            and _has_audio(fmt)
+            and (fmt.get("ext") or "").lower() in ("m4a", "mp4", "aac")
+            and codec.startswith(("mp4a", "aac", "alac"))
             and _direct_format(fmt))
 
 
@@ -100,76 +119,90 @@ def _generic_audio(fmt, extension=""):
     return not extension or (fmt.get("ext") or "").lower() == extension
 
 
-def select_streams(info, output_format, ceiling, video_extension="", audio_extension="", original_format=False):
+def select_streams(info, output_format, ceiling, output_extension=""):
     formats = info.get("formats") or [info]
-    video_extension = _normalise_extension(video_extension)
-    audio_extension = _normalise_extension(audio_extension)
+    output_extension = _normalise_extension(output_extension)
 
     if output_format == "M4A":
-        if original_format or audio_extension:
-            candidates = [fmt for fmt in formats if _generic_audio(fmt, audio_extension)]
+        if output_extension:
+            candidates = [fmt for fmt in formats if _generic_audio(fmt, output_extension)]
             if not candidates:
-                label = f".{audio_extension}" if audio_extension else "원본"
-                raise ValueError(f"이 링크에는 저장 가능한 {label} 오디오가 없습니다.")
+                raise ValueError(f"이 링크에는 저장 가능한 .{output_extension} 오디오 원본이 없습니다.")
             return None, max(candidates, key=_audio_key)
 
-        audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
-        if audio:
-            return None, audio
+        preferred = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
+        if preferred:
+            return None, preferred
         fallback = max((fmt for fmt in formats if _generic_audio(fmt)), key=_audio_key, default=None)
         if fallback:
             return None, fallback
         raise ValueError("이 링크에는 저장 가능한 오디오 원본이 없습니다.")
 
-    if original_format:
-        candidates = [fmt for fmt in formats
-                      if _generic_video(fmt, ceiling, video_extension, require_audio=True)]
-        if not candidates:
-            label = f".{video_extension}" if video_extension else "원본"
-            raise ValueError(f"선택한 화질에 맞는 영상+오디오 {label} 스트림이 없습니다.")
-        return max(candidates, key=_video_key), None
+    # WebM/MKV/custom containers cannot be assembled by AVFoundation. For
+    # those targets, require a complete source stream in the requested container.
+    if output_extension and output_extension not in ("mp4", "mov"):
+        complete = max((fmt for fmt in formats
+                        if _generic_video(fmt, ceiling, output_extension, require_audio=True)),
+                       key=_video_key, default=None)
+        if complete:
+            return complete, None
+        raise ValueError(
+            f"선택한 품질에 맞는 .{output_extension} 영상+오디오 원본이 없습니다. "
+            "이 포맷은 iOS에서 별도 영상·오디오를 병합할 수 없습니다.")
 
-    if video_extension and video_extension != "mp4":
-        candidates = [fmt for fmt in formats
-                      if _generic_video(fmt, ceiling, video_extension, require_audio=True)]
-        if not candidates:
-            raise ValueError(f"선택한 화질에 맞는 .{video_extension} 영상+오디오 원본이 없습니다.")
-        return max(candidates, key=_video_key), None
+    merge_extensions = ("mp4",) if output_extension == "mp4" else ("mp4", "mov", "m4v")
+    audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
+    if audio is None:
+        audio = max((fmt for fmt in formats if ios_audio(fmt)), key=_audio_key, default=None)
 
-    if audio_extension:
-        audio_candidates = [fmt for fmt in formats if _generic_audio(fmt, audio_extension)]
-        audio = max(audio_candidates, key=_audio_key, default=None)
-    else:
-        audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
-
-    h264 = max((fmt for fmt in formats if compatible_video(fmt, ceiling)),
+    # Prefer H.264/AAC when available, but do not make it a hard requirement.
+    h264 = max((fmt for fmt in formats
+                if compatible_video(fmt, ceiling)
+                and (fmt.get("ext") or "").lower() in merge_extensions),
                key=_video_key, default=None)
     if h264:
         if _has_audio(h264):
             return h264, None
         if audio:
             return h264, audio
-        complete_h264 = max((fmt for fmt in formats
-                             if compatible_video(fmt, ceiling) and _has_audio(fmt)),
-                            key=_video_key, default=None)
-        if complete_h264:
-            return complete_h264, None
 
-    complete_mp4 = max((fmt for fmt in formats
-                        if _generic_video(fmt, ceiling, "mp4", require_audio=True)),
-                       key=_video_key, default=None)
-    if complete_mp4:
-        return complete_mp4, None
+    # Instagram and several other extractors may expose only HEVC/AV1 MP4
+    # video plus a separate M4A audio stream. AVFoundation can merge those
+    # directly on supported iOS devices, so use them before giving up.
+    ios_candidate = max((fmt for fmt in formats
+                         if ios_video(fmt, ceiling, merge_extensions)),
+                        key=_video_key, default=None)
+    if ios_candidate:
+        if _has_audio(ios_candidate):
+            return ios_candidate, None
+        if audio:
+            return ios_candidate, audio
 
-    if video_extension == "mp4":
-        raise ValueError("선택한 화질에 맞는 MP4 영상+오디오 원본이 없습니다.")
+    # Some extractors do not report a precise codec name. If the container is
+    # one AVFoundation can normally open, still try a split video+audio pair
+    # instead of rejecting the link at metadata-selection time.
+    generic_merge = max((fmt for fmt in formats
+                         if _generic_video(fmt, ceiling)
+                         and (fmt.get("ext") or "").lower() in merge_extensions),
+                        key=_video_key, default=None)
+    if generic_merge:
+        if _has_audio(generic_merge):
+            return generic_merge, None
+        if audio:
+            return generic_merge, audio
 
-    fallback = max((fmt for fmt in formats
-                    if _generic_video(fmt, ceiling, require_audio=True)),
+    complete = max((fmt for fmt in formats
+                    if _generic_video(fmt, ceiling,
+                                      "mp4" if output_extension == "mp4" else "",
+                                      require_audio=True)),
                    key=_video_key, default=None)
-    if fallback:
-        return fallback, None
-    raise ValueError("선택한 화질에 맞는 저장 가능한 영상+오디오 원본이 없습니다.")
+    if complete:
+        return complete, None
+
+    target = f".{output_extension}" if output_extension else "저장 가능한"
+    raise ValueError(
+        f"선택한 품질에 맞는 {target} 영상 원본을 찾지 못했습니다. "
+        "다른 품질 또는 yt-dlp 기본 사용을 시도해 주세요.")
 
 def parse_custom_arguments(parse_options, value):
     """Parse arbitrary yt-dlp CLI arguments into YoutubeDL API options."""
@@ -406,8 +439,9 @@ def run(request_json):
         url = validate_url(request["url"])
         emit("extracting")
         raw_arguments = str(request.get("custom_arguments", "") or "").strip()
-        raw_mode = bool(raw_arguments)
-        ytdlp_defaults = bool(request.get("ytdlp_defaults", False)) and not raw_mode
+        preset_alias = "" if raw_arguments else str(request.get("preset_alias", "") or "").strip().lower()
+        direct_mode = bool(raw_arguments or preset_alias)
+        ytdlp_defaults = bool(request.get("ytdlp_defaults", False)) and not direct_mode
 
         def default_hook(event):
             checkpoint()
@@ -417,10 +451,14 @@ def run(request_json):
                 value = 1.0
             emit("downloading", progress=value, speed=event.get("speed"), eta=event.get("eta"))
 
-        if raw_mode:
-            # A non-empty argument field is authoritative. Parse it with
-            # yt-dlp itself instead of translating or filtering individual flags.
-            options = parse_custom_arguments(parse_options, raw_arguments)
+        if direct_mode:
+            # A main-screen -t preset or a non-empty argument field is
+            # authoritative and is parsed by yt-dlp itself.
+            direct_arguments = []
+            if preset_alias:
+                direct_arguments.extend(("-t", preset_alias))
+            direct_arguments.extend(shlex.split(raw_arguments))
+            options = parse_options(direct_arguments).ydl_opts
             if request.get("operation") == "download":
                 folder = request["directory"]
                 os.makedirs(folder, exist_ok=True)
@@ -473,8 +511,9 @@ def run(request_json):
             if request["operation"] == "inspect":
                 return json.dumps({"ok": True, "info": summary, "version": __version__}, allow_nan=False)
 
-            if raw_mode:
-                log("직접 yt-dlp 인수 모드 · 앱의 다른 다운로드 옵션은 무시합니다.")
+            if direct_mode:
+                label = f"-t {preset_alias}" if preset_alias and not raw_arguments else "직접 yt-dlp 인수"
+                log(f"{label} 모드 · 앱의 다른 다운로드 옵션은 무시합니다.")
                 downloaded = ydl.extract_info(url, download=True)
                 checkpoint()
                 if not downloaded:
@@ -498,19 +537,15 @@ def run(request_json):
             output_format = request.get("format", "MP4")
             if output_format not in ("MP4", "M4A"):
                 raise ValueError("지원하지 않는 저장 형식입니다.")
-            original_format = bool(request.get("original_format", False))
+            output_extension = request.get("output_extension", "")
             video, audio = select_streams(info, output_format, int(request.get("quality", 0)),
-                                          request.get("video_extension", ""),
-                                          request.get("audio_extension", ""),
-                                          original_format)
+                                          output_extension)
             if video:
                 extension = (video.get("ext") or "?").upper()
                 codec = video.get("vcodec") or "unknown"
                 height = video.get("height") or "?"
-                if original_format:
-                    log(f"원본 포맷 선택: {extension} · {height}p")
-                elif extension != "MP4" or not codec.startswith(("avc1", "h264")):
-                    log(f"H.264 MP4 대신 {extension} 원본으로 자동 대체 · {height}p", "warning")
+                if extension != "MP4" or not codec.startswith(("avc1", "h264")):
+                    log(f"호환 원본 선택: {extension} · {codec} · {height}p")
                 else:
                     log(f"선택한 원본: H.264 MP4 · {height}p")
             if audio:

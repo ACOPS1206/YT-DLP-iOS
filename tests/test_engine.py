@@ -65,15 +65,15 @@ class FormatSelectionTests(unittest.TestCase):
     def test_extension_preference_selects_requested_container(self):
         webm = video(720, audio=True, codec="vp9", ext="webm")
         chosen, chosen_audio = select_streams(
-            {"formats": [video(1080, audio=True), webm]}, "MP4", 1080, "webm", "")
+            {"formats": [video(1080, audio=True), webm]}, "MP4", 1080, "webm")
         self.assertEqual(chosen["ext"], "webm")
         self.assertIsNone(chosen_audio)
 
     def test_invalid_or_missing_extension_is_reported(self):
         with self.assertRaisesRegex(ValueError, "확장자"):
-            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "../mp4", "")
+            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "../mp4")
         with self.assertRaisesRegex(ValueError, "\\.webm"):
-            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "webm", "")
+            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "webm")
 
     def test_missing_h264_falls_back_to_complete_original(self):
         reels = video(1080, audio=True, codec="hvc1.1.6.L120", ext="mp4", protocol="m3u8_native")
@@ -81,18 +81,32 @@ class FormatSelectionTests(unittest.TestCase):
         self.assertIs(chosen, reels)
         self.assertIsNone(sound)
 
-    def test_original_format_prefers_complete_stream_and_keeps_extension(self):
-        webm = video(1080, audio=True, codec="vp9", ext="webm")
-        split = video(2160, audio=False, codec="vp9", ext="webm")
-        chosen, sound = select_streams({"formats": [webm, split, audio()]}, "MP4", 0, "", "", True)
-        self.assertEqual(chosen["height"], 1080)
-        self.assertEqual(chosen["ext"], "webm")
-        self.assertIsNone(sound)
+    def test_instagram_style_split_hevc_and_m4a_is_accepted(self):
+        reels_video = video(1080, audio=False, codec="hvc1.1.6.L120", ext="mp4", protocol="m3u8_native")
+        reels_audio = audio(ext="m4a", codec="mp4a.40.2")
+        chosen, sound = select_streams({"formats": [reels_video, reels_audio]}, "MP4", 1080)
+        self.assertIs(chosen, reels_video)
+        self.assertIs(sound, reels_audio)
+
+    def test_unknown_mp4_codec_can_fall_back_to_avfoundation_attempt(self):
+        reels_video = video(1080, audio=False, codec="unknown", ext="mp4")
+        reels_audio = audio()
+        chosen, sound = select_streams({"formats": [reels_video, reels_audio]}, "MP4", 1080)
+        self.assertIs(chosen, reels_video)
+        self.assertIs(sound, reels_audio)
+
+    def test_non_avfoundation_container_requires_complete_stream(self):
+        split_webm = video(1080, audio=False, codec="vp9", ext="webm")
+        with self.assertRaisesRegex(ValueError, "병합"):
+            select_streams({"formats": [split_webm, audio(ext="webm", codec="opus")]},
+                           "MP4", 1080, "webm")
 
     def test_audio_falls_back_to_original_container(self):
         opus = audio(ext="webm", codec="opus")
         _, sound = select_streams({"formats": [opus]}, "M4A", 0)
         self.assertEqual(sound["ext"], "webm")
+        _, exact = select_streams({"formats": [audio(), opus]}, "M4A", 0, "webm")
+        self.assertEqual(exact["ext"], "webm")
 
     def test_custom_arguments_use_full_ytdlp_parser(self):
         from yt_dlp import parse_options
@@ -239,9 +253,8 @@ class ActualDownloaderTests(unittest.TestCase):
         with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
             result = json.loads(run(json.dumps({
                 "url": "https://example.com/raw", "operation": "inspect",
-                "format": "M4A", "quality": 480, "original_format": True,
-                "video_extension": "mp4", "audio_extension": "m4a",
-                "download_subtitles": True, "ytdlp_defaults": True,
+                "format": "M4A", "quality": 480, "output_extension": "m4a",
+                "download_subtitles": True, "ytdlp_defaults": True, "preset_alias": "sleep",
                 "custom_arguments": '-f worst --proxy http://127.0.0.1:9999',
             })))
         self.assertTrue(result["ok"], result)
@@ -250,6 +263,7 @@ class ActualDownloaderTests(unittest.TestCase):
         self.assertNotEqual(options.get("socket_timeout"), 15)
         self.assertNotEqual((options.get("extractor_args") or {}).get("youtube"),
                             {"player_client": ["visionos", "android"]})
+        self.assertNotEqual(options.get("sleep_interval_requests"), 0.75)
 
     def test_ytdlp_defaults_omits_format_and_app_selection_options(self):
         from yt_dlp import YoutubeDL
@@ -260,12 +274,29 @@ class ActualDownloaderTests(unittest.TestCase):
         with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
             result = json.loads(run(json.dumps({
                 "url": "https://example.com/defaults", "operation": "inspect",
-                "ytdlp_defaults": True, "video_extension": "webm", "quality": 480,
+                "ytdlp_defaults": True, "output_extension": "webm", "quality": 480,
             })))
         self.assertTrue(result["ok"], result)
         self.assertNotIn("format", options)
         self.assertNotIn("extractor_args", options)
         self.assertNotIn("postprocessors", options)
+
+    def test_main_preset_alias_uses_yt_dlp_direct_mode(self):
+        from yt_dlp import YoutubeDL
+        options = {}
+        def extract(ydl, url, download=False):
+            options.update(ydl.params)
+            return {"id": "fixture", "title": "프리셋"}
+        with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
+            result = json.loads(run(json.dumps({
+                "url": "https://example.com/preset", "operation": "inspect",
+                "preset_alias": "sleep", "format": "MP4", "quality": 360,
+                "output_extension": "mov",
+            })))
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(options["sleep_interval_requests"], 0.75)
+        self.assertEqual(options["sleep_interval"], 10)
+        self.assertNotEqual(options.get("format"), "best")
 
     def test_ytdlp_defaults_returns_single_downloaded_file(self):
         from yt_dlp import YoutubeDL

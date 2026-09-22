@@ -11,7 +11,7 @@ final class SharingAndActivityTests: XCTestCase {
 
     func testShareDeepLinkPreservesDownloadOptions() throws {
         let request = SharedDownloadRequest(link: "https://example.com/video?id=one&list=two",
-                                            format: "M4A", quality: 720, originalFormat: true,
+                                            format: "M4A", quality: 1440,
                                             ytdlpDefaults: true)
         let url = try XCTUnwrap(SharedLinkParser.deepLink(for: request))
         let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
@@ -19,8 +19,8 @@ final class SharingAndActivityTests: XCTestCase {
         XCTAssertEqual(components.host, "download")
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "url" })?.value, request.link)
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "format" })?.value, "M4A")
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "quality" })?.value, "720")
-        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "original" })?.value, "1")
+        XCTAssertEqual(components.queryItems?.first(where: { $0.name == "quality" })?.value, "1440")
+        XCTAssertNil(components.queryItems?.first(where: { $0.name == "original" }))
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "defaults" })?.value, "1")
     }
 

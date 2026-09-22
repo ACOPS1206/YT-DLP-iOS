@@ -58,7 +58,6 @@ private struct ShareDownloadView: View {
     @State private var link = ""
     @State private var format = "MP4"
     @State private var quality = 0
-    @State private var originalFormat = false
     @State private var ytdlpDefaults = false
     @State private var loading = true
     @State private var queued = false
@@ -87,15 +86,10 @@ private struct ShareDownloadView: View {
                         if format == "MP4" {
                             Picker("화질", selection: $quality) {
                                 Text("최고 화질").tag(0)
-                                ForEach([1080, 720, 480], id: \.self) { Text("\($0)p 이하").tag($0) }
+                                ForEach([2160, 1440, 1080, 720, 480, 360], id: \.self) { Text("\($0)p 이하").tag($0) }
                             }
                         }
-                        Toggle("원본 포맷", isOn: $originalFormat)
-                            .disabled(ytdlpDefaults)
-                        Toggle("yt-dlp 기본 선택", isOn: $ytdlpDefaults)
-                            .onChange(of: ytdlpDefaults) { _, enabled in
-                                if enabled { originalFormat = false }
-                            }
+                        Toggle("yt-dlp 기본 사용", isOn: $ytdlpDefaults)
                     }
                     Section {
                         Button("앱에서 다운로드", systemImage: "arrow.down.to.line") { submit() }
@@ -120,7 +114,6 @@ private struct ShareDownloadView: View {
     private func submit() {
         let request = SharedDownloadRequest(link: link.trimmingCharacters(in: .whitespacesAndNewlines),
                                             format: format, quality: quality,
-                                            originalFormat: originalFormat,
                                             ytdlpDefaults: ytdlpDefaults)
         loading = true
         error = nil

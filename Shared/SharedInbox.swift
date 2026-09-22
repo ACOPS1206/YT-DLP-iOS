@@ -5,13 +5,12 @@ struct SharedDownloadRequest: Codable, Identifiable {
     let link: String
     let format: String
     let quality: Int
-    let originalFormat: Bool?
     let ytdlpDefaults: Bool?
     let createdAt: Date
 
-    init(link: String, format: String, quality: Int, originalFormat: Bool = false, ytdlpDefaults: Bool = false) {
+    init(link: String, format: String, quality: Int, ytdlpDefaults: Bool = false) {
         id = UUID(); self.link = link; self.format = format; self.quality = quality
-        self.originalFormat = originalFormat; self.ytdlpDefaults = ytdlpDefaults; createdAt = .now
+        self.ytdlpDefaults = ytdlpDefaults; createdAt = .now
     }
 }
 
@@ -34,7 +33,7 @@ enum SharedLinkParser {
 
     static func deepLink(for request: SharedDownloadRequest) -> URL? {
         guard valid(request.link), ["MP4", "M4A"].contains(request.format),
-              [0, 480, 720, 1080].contains(request.quality) else { return nil }
+              [0, 360, 480, 720, 1080, 1440, 2160].contains(request.quality) else { return nil }
         var components = URLComponents()
         components.scheme = "ytdlpgui"
         components.host = "download"
@@ -42,7 +41,6 @@ enum SharedLinkParser {
             URLQueryItem(name: "url", value: request.link),
             URLQueryItem(name: "format", value: request.format),
             URLQueryItem(name: "quality", value: String(request.quality)),
-            URLQueryItem(name: "original", value: (request.originalFormat ?? false) ? "1" : "0"),
             URLQueryItem(name: "defaults", value: (request.ytdlpDefaults ?? false) ? "1" : "0"),
         ]
         return components.url
@@ -64,7 +62,7 @@ enum SharedInbox {
 
     static func enqueue(_ request: SharedDownloadRequest, at folder: URL? = nil) throws {
         guard SharedLinkParser.valid(request.link), ["MP4", "M4A"].contains(request.format),
-              [0, 480, 720, 1080].contains(request.quality) else {
+              [0, 360, 480, 720, 1080, 1440, 2160].contains(request.quality) else {
             throw NSError(domain: "SharedInbox", code: 2, userInfo: [NSLocalizedDescriptionKey: "올바른 링크와 저장 옵션을 선택해 주세요."])
         }
         let directory = try folder ?? self.directory()
@@ -83,7 +81,7 @@ enum SharedInbox {
                   let request = try? JSONDecoder().decode(SharedDownloadRequest.self, from: data),
                   file.deletingPathExtension().lastPathComponent == request.id.uuidString,
                   SharedLinkParser.valid(request.link), ["MP4", "M4A"].contains(request.format),
-                  [0, 480, 720, 1080].contains(request.quality) else {
+                  [0, 360, 480, 720, 1080, 1440, 2160].contains(request.quality) else {
                 try? FileManager.default.moveItem(at: file, to: file.appendingPathExtension("invalid"))
                 continue
             }

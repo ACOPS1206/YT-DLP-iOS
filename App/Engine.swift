@@ -12,20 +12,19 @@ final class Engine {
                           progress: progress)
     }
 
-    func run(operation: String, link: String, format: SaveFormat, quality: Quality, directory: URL,
+    func run(operation: String, link: String, format: SaveFormat, quality: Int, directory: URL,
+             outputExtension: String, presetAlias: String,
              downloadSubtitles: Bool, subtitleLanguages: String, allowAutomaticSubtitles: Bool,
-             preferredVideoExtension: String, preferredAudioExtension: String, originalFormat: Bool,
              useYTDLPDefaults: Bool, customArguments: String,
              progress: @escaping @MainActor (EngineEvent) -> Void) async throws -> EngineResult {
         let payload: [String: Any] = ["operation": operation, "url": link,
-                                     "format": format.rawValue, "quality": quality.rawValue,
+                                     "format": format.rawValue, "quality": quality,
                                      "directory": directory.path,
+                                     "output_extension": outputExtension,
+                                     "preset_alias": presetAlias,
                                      "download_subtitles": downloadSubtitles,
                                      "subtitle_languages": subtitleLanguages,
                                      "automatic_subtitles": allowAutomaticSubtitles,
-                                     "video_extension": preferredVideoExtension,
-                                     "audio_extension": preferredAudioExtension,
-                                     "original_format": originalFormat,
                                      "ytdlp_defaults": useYTDLPDefaults,
                                      "custom_arguments": customArguments]
         return try await execute(payload: payload, progress: progress)
