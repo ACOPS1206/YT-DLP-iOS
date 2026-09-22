@@ -9,11 +9,12 @@ struct AdvancedOptionsView: View {
                 HStack {
                     Label("-t 프리셋", systemImage: "terminal")
                     Spacer()
-                    Picker("-t 프리셋", selection: $model.presetAlias) {
+                    Picker("", selection: $model.presetAlias) {
                         ForEach(YTDLPPreset.allCases) { preset in
                             Text(preset.title).tag(preset)
                         }
                     }
+                    .labelsHidden()
                     .pickerStyle(.menu)
                     .disabled(model.customArgumentsActive)
                 }
