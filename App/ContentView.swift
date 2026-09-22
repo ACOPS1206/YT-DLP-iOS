@@ -514,11 +514,9 @@ struct ContentView: View {
             model.quality = quality
         }
 
-        let rawOriginal = components.queryItems?.first(where: { $0.name == "original" })?.value?.lowercased()
-        model.downloadOriginalFormat = rawOriginal == "1" || rawOriginal == "true"
         let rawDefaults = components.queryItems?.first(where: { $0.name == "defaults" })?.value?.lowercased()
         model.useYTDLPDefaults = rawDefaults == "1" || rawDefaults == "true"
-        if model.useYTDLPDefaults { model.downloadOriginalFormat = false }
+        if model.useYTDLPDefaults { model.presetAlias = .none }
 
         selectedTab = .download
         model.download()
