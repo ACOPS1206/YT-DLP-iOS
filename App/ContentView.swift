@@ -198,7 +198,12 @@ struct ContentView: View {
     }
 
     private var options: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let appOptionsDisabled = model.isBusy || model.useYTDLPDefaults || model.directYTDLPMode
+        let outputChoices = model.format == .mp4
+            ? OutputFormatPreset.videoChoices
+            : OutputFormatPreset.audioChoices
+
+        return VStack(alignment: .leading, spacing: 16) {
             Text("저장 옵션")
                 .font(.headline)
 
@@ -207,66 +212,127 @@ struct ContentView: View {
                     ForEach(SaveFormat.allCases) { format in
                         FormatChoice(format: format, selected: model.format == format) {
                             model.format = format
+                            let choices = format == .mp4
+                                ? OutputFormatPreset.videoChoices
+                                : OutputFormatPreset.audioChoices
+                            if !choices.contains(model.outputFormatPreset) {
+                                model.outputFormatPreset = .automatic
+                                model.customOutputFormat = ""
+                            }
                         }
                     }
                 }
             }
-            .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
-
-            ContentCard {
-                Toggle(isOn: $model.downloadOriginalFormat) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Label("원본 포맷", systemImage: "shippingbox")
-                            .font(.subheadline)
-                        Text("변환이나 컨테이너 변경 없이 제공되는 원본 스트림을 저장")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
-            }
+            .disabled(appOptionsDisabled)
 
             ContentCard {
                 Toggle(isOn: $model.useYTDLPDefaults) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Label("yt-dlp 기본 선택", systemImage: "terminal")
+                        Label("yt-dlp 기본 사용", systemImage: "shippingbox")
                             .font(.subheadline)
-                        Text("포맷·화질 선택을 지정하지 않고 yt-dlp 기본 동작을 사용")
+                        Text("원본 포맷과 품질 선택을 yt-dlp에 맡겨 그대로 다운로드")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(model.isBusy || model.directYTDLPMode)
+                .onChange(of: model.useYTDLPDefaults) { _, enabled in
+                    if enabled { model.presetAlias = .none }
+                }
+            }
+
+            ContentCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("-t 프리셋", systemImage: "terminal")
+                            .font(.subheadline)
+
+                        Spacer()
+
+                        Picker("-t 프리셋", selection: $model.presetAlias) {
+                            ForEach(YTDLPPreset.allCases) { preset in
+                                Text(preset.title).tag(preset)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    if model.presetAlias != .none {
+                        Text("yt-dlp의 -t \(model.presetAlias.rawValue) 프리셋을 직접 사용합니다. 다른 메인 다운로드 옵션은 무시됩니다.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 .disabled(model.isBusy || model.customArgumentsActive)
-                .onChange(of: model.useYTDLPDefaults) { _, enabled in
-                    if enabled { model.downloadOriginalFormat = false }
+                .onChange(of: model.presetAlias) { _, preset in
+                    if preset != .none { model.useYTDLPDefaults = false }
                 }
             }
 
+            if model.format == .mp4 {
+                ContentCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label("화질", systemImage: "slider.horizontal.3")
+                                .font(.subheadline)
+
+                            Spacer()
+
+                            Picker("화질", selection: $model.quality) {
+                                ForEach(Quality.allCases) { quality in
+                                    Text(quality.title).tag(quality)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+
+                        if model.quality == .custom {
+                            HStack {
+                                TextField("예: 900", text: $model.customQuality)
+                                    .keyboardType(.numberPad)
+                                    .textFieldStyle(.plain)
+                                Text("p 이하")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                }
+                .disabled(appOptionsDisabled)
+            }
+
             ContentCard {
-                HStack {
-                    Label(
-                        model.format == .mp4 ? "화질" : "음질",
-                        systemImage: "slider.horizontal.3"
-                    )
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("출력 포맷", systemImage: "doc.badge.gearshape")
+                            .font(.subheadline)
 
-                    Spacer()
+                        Spacer()
 
-                    if model.format == .mp4 {
-                        Picker("화질", selection: $model.quality) {
-                            ForEach(Quality.allCases) { quality in
-                                Text(quality.title).tag(quality)
+                        Picker("출력 포맷", selection: $model.outputFormatPreset) {
+                            ForEach(outputChoices) { preset in
+                                Text(preset.title).tag(preset)
                             }
                         }
                         .pickerStyle(.menu)
-                        .disabled(model.isBusy || model.useYTDLPDefaults || model.customArgumentsActive)
-                    } else {
-                        Text(model.downloadOriginalFormat ? "원본 오디오" : "AAC 우선")
-                            .font(.subheadline)
+                    }
+
+                    if model.outputFormatPreset == .custom {
+                        TextField(model.format == .mp4 ? "예: mp4, webm" : "예: m4a, opus",
+                                  text: $model.customOutputFormat)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.body.monospaced())
+                    }
+
+                    if !model.effectiveOutputExtension.isEmpty {
+                        Text("요청 포맷: .\(model.effectiveOutputExtension)")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
+            .disabled(appOptionsDisabled)
 
             NavigationLink {
                 AdvancedOptionsView(model: model)
@@ -294,16 +360,14 @@ struct ContentView: View {
 
             Text(
                 model.customArgumentsActive
-                    ? "직접 yt-dlp 인수 모드입니다. 입력한 인수가 포맷·화질·원본 포맷·기본 선택 등 메인 화면의 다운로드 옵션보다 우선합니다."
+                    ? "직접 yt-dlp 인수가 입력되어 있어 메인 화면의 다운로드 옵션은 모두 무시됩니다."
+                    : model.presetAlias != .none
+                    ? "-t \(model.presetAlias.rawValue) 프리셋을 yt-dlp가 직접 실행합니다. FFmpeg가 필요한 프리셋은 iOS에서 실패할 수 있습니다."
                     : model.useYTDLPDefaults
-                    ? "포맷·화질·확장자 선택을 넘기지 않고 yt-dlp의 기본 형식 선택으로 다운로드합니다. iOS에서 FFmpeg가 필요한 링크는 실패할 수 있습니다."
-                    : model.downloadOriginalFormat
-                    ? (model.format == .mp4
-                       ? "선택한 화질 이하에서 영상과 소리가 함께 든 원본 스트림을 그대로 저장합니다."
-                       : "가장 좋은 원본 오디오 스트림을 확장자 그대로 저장합니다.")
-                    : (model.format == .mp4
-                       ? "H.264 MP4를 우선하고, 없으면 같은 화질의 재생 가능한 원본 포맷으로 자동 대체합니다."
-                       : "AAC/M4A를 우선하고, 없으면 다른 원본 오디오 포맷으로 자동 대체합니다.")
+                    ? "yt-dlp가 사이트에서 제공하는 원본 형식과 품질을 직접 선택합니다. 별도 영상·오디오 병합에 FFmpeg가 필요하면 실패할 수 있습니다."
+                    : model.format == .mp4
+                    ? "H.264를 우선하되 HEVC/AV1 MP4와 분리 오디오까지 자동 폴백합니다. MP4/MOV는 iOS에서 병합할 수 있습니다."
+                    : "AAC/M4A를 우선하고, 선택한 출력 포맷의 원본 오디오가 있으면 그대로 저장합니다."
             )
             .font(.caption)
             .foregroundStyle(.secondary)
