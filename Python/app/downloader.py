@@ -1,5 +1,6 @@
-"""On-device extraction/download. Swift AVFoundation handles MP4 muxing."""
-import copy
+"""One CLI argument pipeline for on-device yt-dlp downloads."""
+import contextlib
+import io
 import hashlib
 import importlib
 import json
@@ -29,211 +30,60 @@ def validate_url(value):
     return value.strip()
 
 
-def _direct_format(fmt):
-    return (fmt.get("protocol") in ("https", "http", "m3u8", "m3u8_native", "http_dash_segments")
-            and not fmt.get("has_drm"))
-
-
-def _within_ceiling(fmt, ceiling):
-    height = fmt.get("height") or 0
-    return not ceiling or (height > 0 and height <= ceiling)
-
-
-def _normalise_extension(value):
-    extension = (value or "").strip().lower().lstrip(".")
-    if not extension:
-        return ""
-    if not re.fullmatch(r"[a-z0-9]{1,10}", extension):
+def build_arguments(request):
+    """Translate UI choices to CLI tokens; custom arguments replace selection."""
+    raw = str(request.get("custom_arguments") or "").strip()
+    if raw:
+        tokens = shlex.split(raw)
+        if tokens and tokens[0] == "yt-dlp":
+            tokens.pop(0)
+        return tokens
+    # Legacy share-inbox requests remain readable, without another execution path.
+    preset = str(request.get("preset_alias") or "").strip()
+    if preset:
+        return ["-t", preset]
+    if request.get("ytdlp_defaults"):
+        return []
+    kind = request.get("format", "MP4")
+    if kind not in ("MP4", "M4A"):
+        raise ValueError("지원하지 않는 파일 형식입니다.")
+    extension = str(request.get("output_extension") or "").strip().lower().lstrip(".")
+    if extension and not re.fullmatch(r"[a-z0-9]{1,10}", extension):
         raise ValueError("확장자는 점(.) 없이 영문자와 숫자만 입력해 주세요.")
-    return extension
+    ceiling = int(request.get("quality") or 0)
+    if ceiling and not 144 <= ceiling <= 4320:
+        raise ValueError("화질은 144~4320p 범위로 입력해 주세요.")
+    selector = "b" if kind == "MP4" else "ba"
+    if extension:
+        selector += f"[ext={extension}]"
+    if kind == "MP4" and ceiling:
+        selector += f"[height<={ceiling}]"
+    arguments = ["-f", selector]
+    if request.get("download_subtitles"):
+        arguments += ["--write-subs", "--sub-langs", request.get("subtitle_languages") or "ko,en"]
+        if request.get("automatic_subtitles", True):
+            arguments += ["--write-auto-subs"]
+    return arguments
 
 
-def _has_video(fmt):
-    return (fmt.get("vcodec") or "none") != "none"
-
-
-def _has_audio(fmt):
-    return (fmt.get("acodec") or "none") != "none"
-
-
-def _video_key(fmt):
-    return (fmt.get("height") or 0, fmt.get("fps") or 0, fmt.get("tbr") or 0,
-            fmt.get("filesize") or fmt.get("filesize_approx") or 0)
-
-
-def _audio_key(fmt):
-    return (fmt.get("abr") or 0, fmt.get("tbr") or 0, fmt.get("asr") or 0)
-
-
-def compatible_video(fmt, ceiling):
-    codec = (fmt.get("vcodec") or "").lower()
-    acodec = (fmt.get("acodec") or "none").lower()
-    return ((fmt.get("ext") or "").lower() == "mp4"
-            and codec.startswith(("avc1", "h264"))
-            and (acodec == "none" or acodec.startswith(("mp4a", "aac")))
-            and _direct_format(fmt)
-            and _within_ceiling(fmt, ceiling))
-
-
-def compatible_audio(fmt):
-    codec = (fmt.get("acodec") or "").lower()
-    return ((fmt.get("ext") or "").lower() in ("m4a", "mp4", "aac")
-            and not _has_video(fmt)
-            and codec.startswith(("mp4a", "aac", "alac"))
-            and _direct_format(fmt))
-
-
-def ios_video(fmt, ceiling, extensions=("mp4", "mov", "m4v")):
-    codec = (fmt.get("vcodec") or "").lower()
-    return (_has_video(fmt)
-            and (fmt.get("ext") or "").lower() in extensions
-            and codec.startswith(("avc1", "h264", "hvc1", "hev1", "hevc", "av01"))
-            and _direct_format(fmt)
-            and _within_ceiling(fmt, ceiling))
-
-
-def ios_audio(fmt):
-    codec = (fmt.get("acodec") or "").lower()
-    return (not _has_video(fmt)
-            and _has_audio(fmt)
-            and (fmt.get("ext") or "").lower() in ("m4a", "mp4", "aac")
-            and codec.startswith(("mp4a", "aac", "alac"))
-            and _direct_format(fmt))
-
-
-def _generic_video(fmt, ceiling, extension="", require_audio=None):
-    if not (_has_video(fmt) and _direct_format(fmt) and _within_ceiling(fmt, ceiling)):
-        return False
-    if extension and (fmt.get("ext") or "").lower() != extension:
-        return False
-    if require_audio is True and not _has_audio(fmt):
-        return False
-    if require_audio is False and _has_audio(fmt):
-        return False
-    return True
-
-
-def _generic_audio(fmt, extension=""):
-    if _has_video(fmt) or not _has_audio(fmt) or not _direct_format(fmt):
-        return False
-    return not extension or (fmt.get("ext") or "").lower() == extension
-
-
-def select_streams(info, output_format, ceiling, output_extension=""):
-    formats = info.get("formats") or [info]
-    output_extension = _normalise_extension(output_extension)
-
-    if output_format == "M4A":
-        if output_extension:
-            candidates = [fmt for fmt in formats if _generic_audio(fmt, output_extension)]
-            if not candidates:
-                raise ValueError(f"이 링크에는 저장 가능한 .{output_extension} 오디오 원본이 없습니다.")
-            return None, max(candidates, key=_audio_key)
-
-        preferred = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
-        if preferred:
-            return None, preferred
-        fallback = max((fmt for fmt in formats if _generic_audio(fmt)), key=_audio_key, default=None)
-        if fallback:
-            return None, fallback
-        raise ValueError("이 링크에는 저장 가능한 오디오 원본이 없습니다.")
-
-    # WebM/MKV/custom containers cannot be assembled by AVFoundation. For
-    # those targets, require a complete source stream in the requested container.
-    if output_extension and output_extension not in ("mp4", "mov"):
-        complete = max((fmt for fmt in formats
-                        if _generic_video(fmt, ceiling, output_extension, require_audio=True)),
-                       key=_video_key, default=None)
-        if complete:
-            return complete, None
-        raise ValueError(
-            f"선택한 품질에 맞는 .{output_extension} 영상+오디오 원본이 없습니다. "
-            "이 포맷은 iOS에서 별도 영상·오디오를 병합할 수 없습니다.")
-
-    merge_extensions = ("mp4",) if output_extension == "mp4" else ("mp4", "mov", "m4v")
-    audio = max((fmt for fmt in formats if compatible_audio(fmt)), key=_audio_key, default=None)
-    if audio is None:
-        audio = max((fmt for fmt in formats if ios_audio(fmt)), key=_audio_key, default=None)
-
-    # Prefer H.264/AAC when available, but do not make it a hard requirement.
-    h264 = max((fmt for fmt in formats
-                if compatible_video(fmt, ceiling)
-                and (fmt.get("ext") or "").lower() in merge_extensions),
-               key=_video_key, default=None)
-    if h264:
-        if _has_audio(h264):
-            return h264, None
-        if audio:
-            return h264, audio
-
-    # Instagram and several other extractors may expose only HEVC/AV1 MP4
-    # video plus a separate M4A audio stream. AVFoundation can merge those
-    # directly on supported iOS devices, so use them before giving up.
-    ios_candidate = max((fmt for fmt in formats
-                         if ios_video(fmt, ceiling, merge_extensions)),
-                        key=_video_key, default=None)
-    if ios_candidate:
-        if _has_audio(ios_candidate):
-            return ios_candidate, None
-        if audio:
-            return ios_candidate, audio
-
-    # Some extractors do not report a precise codec name. If the container is
-    # one AVFoundation can normally open, still try a split video+audio pair
-    # instead of rejecting the link at metadata-selection time.
-    generic_merge = max((fmt for fmt in formats
-                         if _generic_video(fmt, ceiling)
-                         and (fmt.get("ext") or "").lower() in merge_extensions),
-                        key=_video_key, default=None)
-    if generic_merge:
-        if _has_audio(generic_merge):
-            return generic_merge, None
-        if audio:
-            return generic_merge, audio
-
-    complete = max((fmt for fmt in formats
-                    if _generic_video(fmt, ceiling,
-                                      "mp4" if output_extension == "mp4" else "",
-                                      require_audio=True)),
-                   key=_video_key, default=None)
-    if complete:
-        return complete, None
-
-    target = f".{output_extension}" if output_extension else "저장 가능한"
-    raise ValueError(
-        f"선택한 품질에 맞는 {target} 영상 원본을 찾지 못했습니다. "
-        "다른 품질 또는 yt-dlp 기본 사용을 시도해 주세요.")
-
-def parse_custom_arguments(parse_options, value):
-    """Parse arbitrary yt-dlp CLI arguments into YoutubeDL API options."""
-    tokens = shlex.split(value or "")
-    if not tokens:
-        return {}
+def command_options(parse_options, arguments):
     try:
-        return parse_options(tokens).ydl_opts
-    except SystemExit as error:
-        raise ValueError("이 yt-dlp 인수는 앱 안에서 다운로드 옵션으로 사용할 수 없습니다.") from error
-
-
-def select_subtitle(info, languages, automatic=True):
-    requested = [part.strip() for part in (languages or "").split(",") if part.strip()]
-    if not requested:
-        requested = ["ko", "en"]
-    sources = [(info.get("subtitles") or {}, False)]
-    if automatic:
-        sources.append((info.get("automatic_captions") or {}, True))
-    for language in requested:
-        for captions, is_automatic in sources:
-            key = next((name for name in captions if name == language), None)
-            key = key or next((name for name in captions if name.split("-")[0] == language.split("-")[0]), None)
-            if not key:
-                continue
-            choices = captions.get(key) or []
-            choice = next((entry for entry in choices if entry.get("ext") == "vtt"), None)
-            choice = choice or next((entry for entry in choices if entry.get("url")), None)
-            if choice and choice.get("url"):
-                return key, choice, is_automatic
-    return None
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            parsed = parse_options(["--ignore-config", *arguments])
+    except (SystemExit, Exception) as error:
+        raise ValueError("yt-dlp 인수를 확인해 주세요. --help/-U는 다운로드 인수가 아닙니다.") from error
+    if parsed.urls:
+        raise ValueError("링크는 링크 입력란에 넣고, 커스텀 명령에는 옵션만 입력해 주세요.")
+    options = parsed.ydl_opts
+    options["postprocessors"] = [pp for pp in options.get("postprocessors", [])
+                                 if not (pp.get("key") == "FFmpegConcat" and pp.get("only_multi_video"))]
+    # Embedded CPython cannot spawn desktop tools. Fail before any transfer.
+    if any(pp.get("key", "").startswith(("FFmpeg", "Exec"))
+           for pp in options.get("postprocessors", [])) or options.get("external_downloader"):
+        raise ValueError("이 명령은 FFmpeg 또는 외부 실행 파일이 필요합니다. 현재 iOS 엔진은 원본 파일 저장만 지원합니다.")
+    if getattr(parsed.options, "update_self", False):
+        raise ValueError("엔진 업데이트는 설정의 업데이트 버튼을 사용해 주세요.")
+    return options
 
 
 def install_latest_engine(root, emit):
@@ -359,6 +209,8 @@ def _single_download_file(folder, info=None, ydl=None):
         if not path:
             return
         path = os.path.abspath(os.path.expanduser(str(path)))
+        if os.path.commonpath((os.path.realpath(folder), os.path.realpath(path))) != os.path.realpath(folder):
+            return
         if os.path.isfile(path) and path not in candidates:
             candidates.append(path)
 
@@ -391,8 +243,6 @@ def _single_download_file(folder, info=None, ydl=None):
         return media[0]
     if len(media) > 1:
         raise ValueError("yt-dlp가 여러 미디어 파일을 만들었습니다. 현재 보관함에는 한 번에 한 파일만 가져올 수 있습니다.")
-    if len(candidates) == 1:
-        return candidates[0]
     if not candidates:
         raise ValueError("yt-dlp 다운로드 결과 파일을 찾을 수 없습니다.")
     raise ValueError("yt-dlp가 여러 결과 파일을 만들었지만 저장할 미디어 파일을 하나로 결정할 수 없습니다.")
@@ -438,174 +288,69 @@ def run(request_json):
 
         url = validate_url(request["url"])
         emit("extracting")
-        raw_arguments = str(request.get("custom_arguments", "") or "").strip()
-        preset_alias = "" if raw_arguments else str(request.get("preset_alias", "") or "").strip().lower()
-        direct_mode = bool(raw_arguments or preset_alias)
-        ytdlp_defaults = bool(request.get("ytdlp_defaults", False)) and not direct_mode
+        arguments = build_arguments(request)
+        options = command_options(parse_options, arguments)
+        last_emit = [0.0]
 
-        def default_hook(event):
+        def hook(event):
             checkpoint()
+            now = time.monotonic()
+            if now - last_emit[0] < 0.15 and event.get("status") != "finished":
+                return
+            last_emit[0] = now
             total = event.get("total_bytes") or event.get("total_bytes_estimate")
             value = min(1.0, event.get("downloaded_bytes", 0) / total) if total else None
             if event.get("status") == "finished":
                 value = 1.0
-            emit("downloading", progress=value, speed=event.get("speed"), eta=event.get("eta"))
+            def finite(value):
+                return value if isinstance(value, (float, int)) and math.isfinite(value) else None
+            emit("downloading", progress=finite(value), speed=finite(event.get("speed")),
+                 eta=finite(event.get("eta")))
 
-        if direct_mode:
-            # A main-screen -t preset or a non-empty argument field is
-            # authoritative and is parsed by yt-dlp itself.
-            direct_arguments = []
-            if preset_alias:
-                direct_arguments.extend(("-t", preset_alias))
-            direct_arguments.extend(shlex.split(raw_arguments))
-            options = parse_options(direct_arguments).ydl_opts
-            if request.get("operation") == "download":
-                folder = request["directory"]
-                os.makedirs(folder, exist_ok=True)
-                paths = dict(options.get("paths") or {})
-                if not paths.get("home"):
-                    paths["home"] = folder
-                options["paths"] = paths
-                options["progress_hooks"] = [default_hook]
-            # The logger is app plumbing rather than download-selection policy.
-            options["logger"] = Logger()
-        else:
-            options = {
-                "noplaylist": True, "quiet": True, "no_warnings": False, "noprogress": True,
-                "logger": Logger(), "cachedir": False,
-                "js_runtimes": {}, "remote_components": [],
-                "age_limit": 17, "overwrites": True,
-            }
-            if ytdlp_defaults:
-                # Keep only app-integration settings. In particular, do not pass
-                # the app's format, quality, extension or subtitle preferences.
-                if request.get("operation") == "download":
-                    folder = request["directory"]
-                    os.makedirs(folder, exist_ok=True)
-                    options["outtmpl"] = {"default": os.path.join(folder, "yt-dlp.%(ext)s")}
-                    options["progress_hooks"] = [default_hook]
-            else:
-                options.update({
-                    # The app chooses compatible streams itself and combines them
-                    # with AVFoundation. "best" here only keeps extraction on a
-                    # single stream while the app performs its own final selection.
-                    "format": "best",
-                    "socket_timeout": 15, "retries": 2, "fragment_retries": 2,
-                    "hls_prefer_native": True,
-                    "extractor_args": {"youtube": {"player_client": ["visionos", "android"]}},
-                    "ignore_no_formats_error": True,
-                    "postprocessors": [], "fixup": "never",
-                })
+        user_filter = options.get("match_filter")
+        def match_filter(info, *, incomplete=False):
+            checkpoint()
+            if info.get("requested_formats"):
+                raise ValueError("이 선택은 영상·오디오 병합이 필요합니다. -f best 또는 단일 원본 포맷을 선택해 주세요.")
+            if info.get("is_live"):
+                raise ValueError("진행 중인 라이브 영상은 지원하지 않습니다.")
+            if (info.get("age_limit") or 0) >= 18:
+                raise ValueError("이 콘텐츠는 지원하지 않습니다.")
+            emit("metadata", info=media_info(info))
+            return user_filter(info, incomplete=incomplete) if user_filter else None
+
+        options.update(logger=Logger(), progress_hooks=[hook], match_filter=match_filter,
+                       noplaylist=True, playlistend=1, quiet=True, noprogress=True,
+                       cachedir=False, js_runtimes={}, remote_components=[],
+                       fixup="never", age_limit=17)
+        downloading = request.get("operation") == "download"
+        folder = request.get("directory", "")
+        if downloading:
+            os.makedirs(folder, exist_ok=True)
+            # App owns staging; CLI -o/-P must not move or overwrite unrelated files.
+            options["paths"] = {"home": folder, "temp": folder}
+            options["outtmpl"] = {"default": os.path.join(folder, "media.%(ext)s")}
+        log("커스텀 yt-dlp 인수로 실행" if request.get("custom_arguments") else "yt-dlp " + shlex.join(arguments))
         with YoutubeDL(options) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=downloading)
             checkpoint()
             if not info or info.get("_type") in ("playlist", "multi_video"):
                 raise ValueError("한 개의 동영상 링크를 입력해 주세요.")
-            if (info.get("age_limit") or 0) >= 18:
-                raise ValueError("이 콘텐츠는 지원하지 않습니다.")
-            if info.get("is_live"):
-                raise ValueError("진행 중인 라이브 영상은 지원하지 않습니다.")
             summary = media_info(info)
             emit("metadata", info=summary)
-            log("동영상 정보 확인 완료")
-            if request["operation"] == "inspect":
-                return json.dumps({"ok": True, "info": summary, "version": __version__}, allow_nan=False)
-
-            if direct_mode:
-                label = f"-t {preset_alias}" if preset_alias and not raw_arguments else "직접 yt-dlp 인수"
-                log(f"{label} 모드 · 앱의 다른 다운로드 옵션은 무시합니다.")
-                downloaded = ydl.extract_info(url, download=True)
-                checkpoint()
-                if not downloaded:
-                    raise ValueError("yt-dlp 다운로드 결과를 읽을 수 없습니다.")
-                path = _single_download_file(request["directory"], downloaded, ydl)
-                log(f"직접 인수 다운로드 완료 · {(os.path.splitext(path)[1] or '원본').lstrip('.').upper()}")
-                return json.dumps({"ok": True, "info": summary, "version": __version__,
-                                   "file": path}, allow_nan=False)
-
-            if ytdlp_defaults:
-                log("yt-dlp 기본 선택 모드 · 포맷/화질 선택 인수 없이 다운로드")
-                downloaded = ydl.extract_info(url, download=True)
-                checkpoint()
-                if not downloaded:
-                    raise ValueError("yt-dlp 기본 다운로드 결과를 읽을 수 없습니다.")
-                path = _single_download_file(request["directory"], downloaded, ydl)
-                log(f"yt-dlp 기본 다운로드 완료 · {(os.path.splitext(path)[1] or '원본').lstrip('.').upper()}")
-                return json.dumps({"ok": True, "info": summary, "version": __version__,
-                                   "file": path}, allow_nan=False)
-
-            output_format = request.get("format", "MP4")
-            if output_format not in ("MP4", "M4A"):
-                raise ValueError("지원하지 않는 저장 형식입니다.")
-            output_extension = request.get("output_extension", "")
-            video, audio = select_streams(info, output_format, int(request.get("quality", 0)),
-                                          output_extension)
-            if video:
-                extension = (video.get("ext") or "?").upper()
-                codec = video.get("vcodec") or "unknown"
-                height = video.get("height") or "?"
-                if extension != "MP4" or not codec.startswith(("avc1", "h264")):
-                    log(f"호환 원본 선택: {extension} · {codec} · {height}p")
-                else:
-                    log(f"선택한 원본: H.264 MP4 · {height}p")
-            if audio:
-                extension = (audio.get("ext") or "?").upper()
-                codec = audio.get("acodec") or "unknown"
-                log(f"선택한 오디오: {extension} · {codec}")
-            folder = request["directory"]
-            os.makedirs(folder, exist_ok=True)
-            streams = [(name, stream) for name, stream in (("video", video), ("audio", audio)) if stream]
-            paths = {}
-
-            for index, (name, stream) in enumerate(streams):
-                checkpoint()
-                log("동영상 원본 다운로드 시작" if name == "video" else "오디오 원본 다운로드 시작")
-                last_emit = [0.0]
-
-                def hook(event):
-                    checkpoint()
-                    now = time.monotonic()
-                    if now - last_emit[0] < 0.15 and event.get("status") != "finished":
-                        return
-                    last_emit[0] = now
-                    total = event.get("total_bytes") or event.get("total_bytes_estimate")
-                    value = min(1.0, event.get("downloaded_bytes", 0) / total) if total else None
-                    if event.get("status") == "finished":
-                        value = 1.0
-                    progress = (index + value) / len(streams) if value is not None else None
-                    emit("downloading", progress=progress,
-                         speed=event.get("speed"), eta=event.get("eta"))
-
-                single = copy.deepcopy(info)
-                for key in ("requested_formats", "requested_downloads", "__postprocessors", "_filename", "filepath"):
-                    single.pop(key, None)
-                single.update(stream)
-                ydl.params["outtmpl"] = {"default": os.path.join(folder, name + ".%(ext)s")}
-                ydl.params["progress_hooks"] = [hook]
-                # YoutubeDL stores hooks separately from params.
-                ydl._progress_hooks = [hook]
-                ydl.process_info(single)
-                checkpoint()
-                path = ydl.prepare_filename(single)
-                if not path or not os.path.isfile(path):
-                    raise ValueError("다운로드 결과 파일을 찾을 수 없습니다.")
-                paths[name] = path
-                log("동영상 원본 다운로드 완료" if name == "video" else "오디오 원본 다운로드 완료")
-            if request.get("download_subtitles"):
-                selected = select_subtitle(info, request.get("subtitle_languages", ""),
-                                           request.get("automatic_subtitles", True))
-                if selected:
-                    language, subtitle, is_automatic = selected
-                    extension = re.sub(r"[^a-zA-Z0-9]", "", subtitle.get("ext") or "vtt") or "vtt"
-                    path = os.path.join(folder, f"subtitle.{language}.{extension}")
-                    log(f"{'자동 ' if is_automatic else ''}자막 다운로드 시작 · {language}")
-                    with ydl.urlopen(subtitle["url"]) as response, open(path, "wb") as output:
-                        shutil.copyfileobj(response, output)
-                    paths["subtitle"] = path
-                    log("자막 다운로드 완료")
-                else:
-                    log("선택한 언어의 자막을 찾지 못했습니다.", "warning")
-            return json.dumps({"ok": True, "info": summary, "version": __version__, **paths}, allow_nan=False)
+            result = {"ok": True, "info": summary, "version": __version__}
+            if downloading:
+                result["file"] = _single_download_file(folder, info, ydl)
+                result["media_type"] = "audio" if info.get("vcodec") == "none" else "video"
+                subtitles = [entry.get("filepath") for entry in (info.get("requested_subtitles") or {}).values()
+                             if entry.get("filepath") and os.path.isfile(entry["filepath"])]
+                # Current library stores one subtitle. Keep deterministic language order.
+                if subtitles:
+                    result["subtitle"] = subtitles[0]
+                if len(subtitles) > 1:
+                    log("보관함에는 첫 번째 자막 파일만 함께 저장합니다.", "warning")
+                log("다운로드 완료")
+            return json.dumps(result, allow_nan=False)
     except Cancelled:
         return json.dumps({"ok": False, "cancelled": True})
     except Exception as error:
