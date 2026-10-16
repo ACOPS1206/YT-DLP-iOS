@@ -56,7 +56,7 @@ struct FormatChoice: View {
                     Text(format.title)
                         .font(.headline)
 
-                    Text(format.rawValue)
+                    Text(format.detail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -72,7 +72,7 @@ struct FormatChoice: View {
                 : .regular.interactive(),
             in: .rect(cornerRadius: 24)
         )
-        .accessibilityLabel("\(format.title), \(format.rawValue)")
+        .accessibilityLabel("\(format.title), \(format.detail)")
         .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 }
