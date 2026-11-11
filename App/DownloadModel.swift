@@ -4,7 +4,7 @@ import UIKit
 
 @MainActor @Observable
 final class DownloadModel {
-    static let bundledYTDLPVersion = "2026.08.19"
+    static let bundledYTDLPVersion = "2026.10.26"
 
     var link = ""
     var format: SaveFormat = .mp4

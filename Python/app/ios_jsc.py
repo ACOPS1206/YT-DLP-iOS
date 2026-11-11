@@ -1,6 +1,6 @@
 """Bundled yt-dlp EJS scripts run inside Apple's JavaScriptCore.
 
-This adapter targets yt-dlp 2026.08.19. No command-line JS executable is used.
+This adapter targets yt-dlp 2026.10.26. No command-line JS executable is used.
 The provider API is internal; validate this adapter when updating yt-dlp.
 """
 import _ios_bridge
