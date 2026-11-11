@@ -13,19 +13,17 @@ final class Engine {
     }
 
     func run(operation: String, link: String, format: SaveFormat, quality: Int, directory: URL,
-             outputExtension: String, presetAlias: String,
+             outputExtension: String,
              downloadSubtitles: Bool, subtitleLanguages: String, allowAutomaticSubtitles: Bool,
-             useYTDLPDefaults: Bool, customArguments: String,
+             customArguments: String,
              progress: @escaping @MainActor (EngineEvent) -> Void) async throws -> EngineResult {
         let payload: [String: Any] = ["operation": operation, "url": link,
                                      "format": format.rawValue, "quality": quality,
                                      "directory": directory.path,
                                      "output_extension": outputExtension,
-                                     "preset_alias": presetAlias,
                                      "download_subtitles": downloadSubtitles,
                                      "subtitle_languages": subtitleLanguages,
                                      "automatic_subtitles": allowAutomaticSubtitles,
-                                     "ytdlp_defaults": useYTDLPDefaults,
                                      "custom_arguments": customArguments]
         return try await execute(payload: payload, progress: progress)
     }

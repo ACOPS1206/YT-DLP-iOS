@@ -40,14 +40,6 @@ enum OutputFormatPreset: String, CaseIterable, Identifiable {
     static let audioChoices: [Self] = [.automatic, .m4a, .mp3, .aac, .flac, .wav, .opus, .custom]
 }
 
-enum YTDLPPreset: String, CaseIterable, Identifiable {
-    case none = ""
-    case mp4, mkv, mp3, aac, sleep
-
-    var id: String { rawValue }
-    var title: String { self == .none ? "사용 안 함" : rawValue.uppercased() }
-}
-
 enum Appearance: String, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
@@ -78,8 +70,7 @@ struct EngineResult: Decodable {
     let error: String?
     let cancelled: Bool?
     let info: MediaInfo?
-    let video: String?
-    let audio: String?
+    let media_type: String?
     let file: String?
     let subtitle: String?
     let version: String?

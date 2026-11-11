@@ -20,127 +20,49 @@ bridge.is_cancelled = lambda: False
 bridge.evaluate_js = lambda script: '{"type":"error","error":"fixture"}'
 sys.modules["_ios_bridge"] = bridge
 
-from downloader import (install_latest_engine, parse_custom_arguments, run,
-                        select_streams, select_subtitle, validate_url)
+from downloader import (build_arguments, command_options, install_latest_engine,
+                        run, validate_url)
 
 
-def video(height, *, audio=False, codec="avc1.640028", drm=False, ext="mp4", protocol="https"):
-    return {"format_id": str(height), "height": height, "ext": ext, "vcodec": codec,
-            "acodec": "mp4a.40.2" if audio else "none", "protocol": protocol, "has_drm": drm}
-
-
-def audio(*, ext="m4a", codec="mp4a.40.2"):
-    return {"format_id": "140", "ext": ext, "vcodec": "none", "acodec": codec,
-            "protocol": "https", "abr": 128}
-
-
-class FormatSelectionTests(unittest.TestCase):
-    def test_ceiling_selects_separate_video_and_audio(self):
-        info = {"formats": [video(2160), video(1080), video(720, audio=True), audio()]}
-        chosen, sound = select_streams(info, "MP4", 1080)
-        self.assertEqual(chosen["height"], 1080)
-        self.assertEqual(sound["format_id"], "140")
-
-    def test_best_filters_incompatible_and_drm(self):
-        info = {"formats": [video(2160, codec="av01.0.01M.08"), video(1080, drm=True),
-                            video(720, audio=True)]}
-        chosen, sound = select_streams(info, "MP4", 0)
-        self.assertEqual(chosen["height"], 720)
-        self.assertIsNone(sound)
-
-    def test_missing_separate_audio_uses_complete_video(self):
-        chosen, sound = select_streams({"formats": [video(1080), video(720, audio=True)]}, "MP4", 0)
-        self.assertEqual(chosen["height"], 720)
-        self.assertIsNone(sound)
-
-    def test_missing_audio_is_reported(self):
-        with self.assertRaises(ValueError):
-            select_streams({"formats": [video(1080)]}, "MP4", 0)
-
-    def test_m4a_selects_audio_without_video(self):
-        chosen, sound = select_streams({"formats": [video(1080), audio()]}, "M4A", 0)
-        self.assertIsNone(chosen)
-        self.assertEqual(sound["ext"], "m4a")
-
-    def test_extension_preference_selects_requested_container(self):
-        webm = video(720, audio=True, codec="vp9", ext="webm")
-        chosen, chosen_audio = select_streams(
-            {"formats": [video(1080, audio=True), webm]}, "MP4", 1080, "webm")
-        self.assertEqual(chosen["ext"], "webm")
-        self.assertIsNone(chosen_audio)
-
-    def test_invalid_or_missing_extension_is_reported(self):
-        with self.assertRaisesRegex(ValueError, "확장자"):
-            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "../mp4")
-        with self.assertRaisesRegex(ValueError, "\\.webm"):
-            select_streams({"formats": [video(720, audio=True)]}, "MP4", 0, "webm")
-
-    def test_missing_h264_falls_back_to_complete_original(self):
-        reels = video(1080, audio=True, codec="hvc1.1.6.L120", ext="mp4", protocol="m3u8_native")
-        chosen, sound = select_streams({"formats": [reels]}, "MP4", 1080)
-        self.assertIs(chosen, reels)
-        self.assertIsNone(sound)
-
-    def test_instagram_style_split_hevc_and_m4a_is_accepted(self):
-        reels_video = video(1080, audio=False, codec="hvc1.1.6.L120", ext="mp4", protocol="m3u8_native")
-        reels_audio = audio(ext="m4a", codec="mp4a.40.2")
-        chosen, sound = select_streams({"formats": [reels_video, reels_audio]}, "MP4", 1080)
-        self.assertIs(chosen, reels_video)
-        self.assertIs(sound, reels_audio)
-
-    def test_unknown_mp4_codec_can_fall_back_to_avfoundation_attempt(self):
-        reels_video = video(1080, audio=False, codec="unknown", ext="mp4")
-        reels_audio = audio()
-        chosen, sound = select_streams({"formats": [reels_video, reels_audio]}, "MP4", 1080)
-        self.assertIs(chosen, reels_video)
-        self.assertIs(sound, reels_audio)
-
-    def test_non_avfoundation_container_requires_complete_stream(self):
-        split_webm = video(1080, audio=False, codec="vp9", ext="webm")
-        with self.assertRaisesRegex(ValueError, "병합"):
-            select_streams({"formats": [split_webm, audio(ext="webm", codec="opus")]},
-                           "MP4", 1080, "webm")
-
-    def test_audio_falls_back_to_original_container(self):
-        opus = audio(ext="webm", codec="opus")
-        _, sound = select_streams({"formats": [opus]}, "M4A", 0)
-        self.assertEqual(sound["ext"], "webm")
-        _, exact = select_streams({"formats": [audio(), opus]}, "M4A", 0, "webm")
-        self.assertEqual(exact["ext"], "webm")
-
-    def test_custom_arguments_use_full_ytdlp_parser(self):
+class CommandTests(unittest.TestCase):
+    def options(self, request):
         from yt_dlp import parse_options
-        options = parse_custom_arguments(
-            parse_options,
-            '-f "worstvideo+worstaudio/worst" -o "custom.%(ext)s" '
-            '--proxy socks5://127.0.0.1:1080 --concurrent-fragments 3 -t sleep')
-        self.assertEqual(options["format"], "worstvideo+worstaudio/worst")
-        self.assertEqual(options["outtmpl"]["default"], "custom.%(ext)s")
-        self.assertEqual(options["proxy"], "socks5://127.0.0.1:1080")
+        return command_options(parse_options, build_arguments(request))
+
+    def test_video_extension_and_quality_are_cli_filters(self):
+        self.assertEqual(self.options({"format": "MP4", "quality": 720,
+                                      "output_extension": ".MP4"})["format"],
+                         "b[ext=mp4][height<=720]")
+
+    def test_audio_selects_original_not_conversion(self):
+        options = self.options({"format": "M4A", "output_extension": "webm"})
+        self.assertEqual(options["format"], "ba[ext=webm]")
+        self.assertFalse(options["postprocessors"])
+
+    def test_custom_command_overrides_ui(self):
+        options = self.options({"custom_arguments": 'yt-dlp -f "worst[ext=mp4]" --concurrent-fragments 3',
+                                "format": "M4A", "quality": 480, "output_extension": "opus",
+                                "download_subtitles": True})
+        self.assertEqual(options["format"], "worst[ext=mp4]")
         self.assertEqual(options["concurrent_fragment_downloads"], 3)
-        self.assertEqual(options["sleep_interval_subtitles"], 5)
-        self.assertEqual(options["sleep_interval_requests"], 0.75)
+        self.assertFalse(options["writesubtitles"])
 
-    def test_previously_blocked_ytdlp_arguments_are_accepted(self):
-        from yt_dlp import parse_options
-        options = parse_custom_arguments(
-            parse_options, '--paths /tmp --exec "echo %(title)s" --write-info-json')
-        self.assertEqual(options["paths"]["home"], "/tmp")
-        self.assertTrue(options["writeinfojson"])
-        self.assertTrue(any(pp.get("key") == "Exec" for pp in options["postprocessors"]))
+    def test_subtitles_go_through_cli_parser(self):
+        options = self.options({"download_subtitles": True, "subtitle_languages": "en,ko"})
+        self.assertTrue(options["writesubtitles"])
+        self.assertTrue(options["writeautomaticsub"])
+        self.assertEqual(options["subtitleslangs"], ["en", "ko"])
 
-    def test_subtitle_prefers_manual_then_requested_language(self):
-        info = {
-            "subtitles": {"en-US": [{"ext": "vtt", "url": "https://example.com/manual"}]},
-            "automatic_captions": {"ko": [{"ext": "vtt", "url": "https://example.com/auto"}]},
-        }
-        language, item, automatic = select_subtitle(info, "ko,en", True)
-        self.assertEqual(language, "ko")
-        self.assertTrue(automatic)
-        self.assertIn("auto", item["url"])
-        language, _, automatic = select_subtitle(info, "en", True)
-        self.assertEqual(language, "en-US")
-        self.assertFalse(automatic)
+    def test_invalid_arguments_raise_instead_of_system_exit(self):
+        for command in ('--not-a-real-option', '--help', '-f "unterminated',
+                        '-f best https://example.com/extra', '-x --audio-format mp3',
+                        '--exec "echo hello"', '-U'):
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                self.options({"custom_arguments": command})
+
+    def test_invalid_ui_values_do_not_silently_fallback(self):
+        for request in ({"quality": 100}, {"output_extension": "../mp4"}, {"format": "???"}):
+            with self.assertRaises(ValueError): self.options(request)
 
     def test_rejects_file_and_credentials(self):
         for value in ("file:///etc/passwd", "https://name:secret@example.com/video", "not a url"):
@@ -187,40 +109,98 @@ class EngineUpdaterTests(unittest.TestCase):
 
 
 class ActualDownloaderTests(unittest.TestCase):
-    def test_real_http_download_of_two_streams_without_external_process(self):
+    def download_fixture(self, *, custom="", audio=False, ceiling=720, extension="", cancel=False, split=False, live=False, age=0, subtitles=False):
         from yt_dlp import YoutubeDL
         with tempfile.TemporaryDirectory() as folder:
             root = pathlib.Path(folder)
-            (root / "source-video.mp4").write_bytes(b"fixture-video" * 8192)
-            (root / "source-audio.m4a").write_bytes(b"fixture-audio" * 2048)
+            source = root / ("source.m4a" if audio else "source.mp4")
+            source.write_bytes(b"fixture-media" * 8192)
             server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(QuietHandler, directory=folder))
             thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
-                vf, af = video(1080), audio()
-                for fmt, path in ((vf, "source-video.mp4"), (af, "source-audio.m4a")):
-                    fmt["protocol"] = "http"; fmt["url"] = f"{base}/{path}"
                 info = {"id": "fixture", "title": "Local fixture", "extractor": "fixture",
-                        "extractor_key": "Fixture", "webpage_url": base, "formats": [vf, af]}
-                request = json.dumps({"operation": "download", "url": base,
-                                      "format": "MP4", "quality": 1080, "directory": str(root / "output")})
-                events = []
-                with patch.object(YoutubeDL, "extract_info", return_value=info), \
+                        "extractor_key": "Fixture", "webpage_url": base,
+                        "is_live": live, "age_limit": age,
+                        "formats": [{"format_id": "original", "url": f"{base}/{source.name}",
+                                     "protocol": "http", "ext": "m4a" if audio else "mp4",
+                                     "vcodec": "none" if audio else "avc1", "acodec": "mp4a",
+                                     "height": None if audio else 720}]}
+                if split:
+                    info["formats"][0]["acodec"] = "none"
+                    info["formats"].append({"format_id": "audio", "url": f"{base}/{source.name}",
+                                            "ext": "m4a", "protocol": "http", "vcodec": "none", "acodec": "mp4a"})
+                if subtitles:
+                    (root / "subtitle.vtt").write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n")
+                    info["subtitles"] = {"en": [{"ext": "vtt", "url": f"{base}/subtitle.vtt"}]}
+                calls, events = [], []
+                def extract(ydl, url, download=True):
+                    calls.append(download)
+                    return ydl.process_ie_result(info, download=download)
+                def cancelled():
+                    return cancel and any(e.get("phase") == "downloading" for e in events)
+                with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract), \
                      patch.object(bridge, "emit", side_effect=lambda raw: events.append(json.loads(raw))), \
-                     patch("subprocess.Popen", side_effect=AssertionError("An external process was attempted")):
-                    result = json.loads(run(request))
-                self.assertTrue(result["ok"], result)
-                self.assertEqual(pathlib.Path(result["video"]).read_bytes(), (root / "source-video.mp4").read_bytes())
-                self.assertEqual(pathlib.Path(result["audio"]).read_bytes(), (root / "source-audio.m4a").read_bytes())
-                values = [event["progress"] for event in events if event.get("progress") is not None]
-                self.assertTrue(values)
-                self.assertEqual(values[-1], 1.0)
-                self.assertEqual(values, sorted(values))
-                self.assertTrue(any(event.get("phase") == "metadata" for event in events))
-                self.assertTrue(any("다운로드 시작" in event.get("message", "") for event in events))
-                self.assertTrue(any("다운로드 완료" in event.get("message", "") for event in events))
+                     patch.object(bridge, "is_cancelled", side_effect=cancelled), \
+                     patch("subprocess.Popen", side_effect=AssertionError("External process attempted")):
+                    result = json.loads(run(json.dumps({"operation": "download", "url": base,
+                        "format": "M4A" if audio else "MP4", "quality": ceiling,
+                        "output_extension": extension, "custom_arguments": custom,
+                        "download_subtitles": subtitles, "subtitle_languages": "en",
+                        "directory": str(root / "output")})))
+                self.assertEqual(calls, [True], "Do not extract the same URL twice")
+                if result["ok"]:
+                    self.assertEqual(pathlib.Path(result["file"]).read_bytes(), source.read_bytes())
+                    self.assertEqual(result["media_type"], "audio" if audio else "video")
+                    self.assertTrue(any(e.get("progress") == 1.0 for e in events))
+                if result["ok"] and subtitles:
+                    self.assertIn("Hello", pathlib.Path(result["subtitle"]).read_text())
+                return result
             finally:
                 server.shutdown(); server.server_close(); thread.join()
+
+    def test_real_http_single_file_download(self):
+        result = self.download_fixture(extension="mp4")
+        self.assertTrue(result["ok"], result)
+
+    def test_real_audio_download(self):
+        result = self.download_fixture(audio=True)
+        self.assertTrue(result["ok"], result)
+
+    def test_custom_command_uses_same_download_path(self):
+        result = self.download_fixture(custom='yt-dlp -f worst -o "ignored.mp3"')
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(result["file"].endswith(".mp4"))
+
+    def test_unavailable_extension_or_quality_fails_honestly(self):
+        self.assertFalse(self.download_fixture(extension="webm")["ok"])
+        self.assertFalse(self.download_fixture(ceiling=360)["ok"])
+
+    def test_cancel_during_transfer(self):
+        self.assertTrue(self.download_fixture(cancel=True)["cancelled"])
+
+    def test_subtitle_download_is_preserved(self):
+        result = self.download_fixture(subtitles=True)
+        self.assertTrue(result["ok"], result)
+
+    def test_split_command_returns_explicit_merge_error(self):
+        result = self.download_fixture(custom="-f bv+ba", split=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("병합", result["error"])
+
+    def test_live_and_age_restrictions_apply_before_download(self):
+        self.assertFalse(self.download_fixture(live=True)["ok"])
+        self.assertFalse(self.download_fixture(age=18)["ok"])
+
+    def test_no_download_command_does_not_claim_success(self):
+        self.assertFalse(self.download_fixture(custom="--simulate")["ok"])
+
+    def test_parse_error_returns_json_and_next_request_works(self):
+        result = json.loads(run(json.dumps({"url": "https://example.com/video", "operation": "inspect",
+                                           "custom_arguments": "--help"})))
+        self.assertFalse(result["ok"])
+        result = self.download_fixture()
+        self.assertTrue(result["ok"], result)
 
     def test_cancel_before_network(self):
         with patch.object(bridge, "is_cancelled", return_value=True):
@@ -242,106 +222,7 @@ class ActualDownloaderTests(unittest.TestCase):
         warning = next(event for event in events if event.get("level") == "warning")
         self.assertIn("[링크]", warning["message"])
         self.assertNotIn("secret", json.dumps(events))
-        self.assertEqual(options["format"], "best")
-
-    def test_custom_arguments_override_all_app_selection_options(self):
-        from yt_dlp import YoutubeDL
-        options = {}
-        def extract(ydl, url, download=False):
-            options.update(ydl.params)
-            return {"id": "fixture", "title": "직접 인수"}
-        with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
-            result = json.loads(run(json.dumps({
-                "url": "https://example.com/raw", "operation": "inspect",
-                "format": "M4A", "quality": 480, "output_extension": "m4a",
-                "download_subtitles": True, "ytdlp_defaults": True, "preset_alias": "sleep",
-                "custom_arguments": '-f worst --proxy http://127.0.0.1:9999',
-            })))
-        self.assertTrue(result["ok"], result)
-        self.assertEqual(options["format"], "worst")
-        self.assertEqual(options["proxy"], "http://127.0.0.1:9999")
-        self.assertNotEqual(options.get("socket_timeout"), 15)
-        self.assertNotEqual((options.get("extractor_args") or {}).get("youtube"),
-                            {"player_client": ["visionos", "android"]})
-        self.assertNotEqual(options.get("sleep_interval_requests"), 0.75)
-
-    def test_ytdlp_defaults_omits_format_and_app_selection_options(self):
-        from yt_dlp import YoutubeDL
-        options = {}
-        def extract(ydl, url, download=False):
-            options.update(ydl.params)
-            return {"id": "fixture", "title": "기본 선택"}
-        with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
-            result = json.loads(run(json.dumps({
-                "url": "https://example.com/defaults", "operation": "inspect",
-                "ytdlp_defaults": True, "output_extension": "webm", "quality": 480,
-            })))
-        self.assertTrue(result["ok"], result)
-        self.assertNotIn("format", options)
-        self.assertNotIn("extractor_args", options)
-        self.assertNotIn("postprocessors", options)
-
-    def test_main_preset_alias_uses_yt_dlp_direct_mode(self):
-        from yt_dlp import YoutubeDL
-        options = {}
-        def extract(ydl, url, download=False):
-            options.update(ydl.params)
-            return {"id": "fixture", "title": "프리셋"}
-        with patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
-            result = json.loads(run(json.dumps({
-                "url": "https://example.com/preset", "operation": "inspect",
-                "preset_alias": "sleep", "format": "MP4", "quality": 360,
-                "output_extension": "mov",
-            })))
-        self.assertTrue(result["ok"], result)
-        self.assertEqual(options["sleep_interval_requests"], 0.75)
-        self.assertEqual(options["sleep_interval"], 10)
-        self.assertNotEqual(options.get("format"), "best")
-
-    def test_ytdlp_defaults_returns_single_downloaded_file(self):
-        from yt_dlp import YoutubeDL
-        calls = []
-        def extract(ydl, url, download=False):
-            calls.append(download)
-            if download:
-                template = ydl.params["outtmpl"]["default"]
-                path = template.replace("%(ext)s", "mp4")
-                pathlib.Path(path).write_bytes(b"raw-default")
-            return {"id": "fixture", "title": "기본 선택", "ext": "mp4",
-                    "vcodec": "avc1", "acodec": "mp4a"}
-        with tempfile.TemporaryDirectory() as folder, \
-             patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
-            result = json.loads(run(json.dumps({
-                "url": "https://example.com/defaults", "operation": "download",
-                "directory": folder, "ytdlp_defaults": True,
-            })))
-        self.assertTrue(result["ok"], result)
-        self.assertEqual(calls, [False, True])
-        self.assertTrue(result["file"].endswith(".mp4"))
-
-    def test_custom_arguments_download_returns_raw_result_file(self):
-        from yt_dlp import YoutubeDL
-        calls = []
-        def extract(ydl, url, download=False):
-            calls.append(download)
-            if download:
-                home = pathlib.Path(ydl.params["paths"]["home"])
-                (home / "custom.webm").write_bytes(b"raw-custom")
-                return {"id": "fixture", "title": "직접 인수", "ext": "webm",
-                        "filepath": str(home / "custom.webm"),
-                        "vcodec": "vp9", "acodec": "opus"}
-            return {"id": "fixture", "title": "직접 인수", "ext": "webm",
-                    "vcodec": "vp9", "acodec": "opus"}
-        with tempfile.TemporaryDirectory() as folder, \
-             patch.object(YoutubeDL, "extract_info", autospec=True, side_effect=extract):
-            result = json.loads(run(json.dumps({
-                "url": "https://example.com/raw", "operation": "download",
-                "directory": folder, "format": "M4A", "quality": 480,
-                "custom_arguments": "-f worst",
-            })))
-        self.assertTrue(result["ok"], result)
-        self.assertEqual(calls, [False, True])
-        self.assertTrue(result["file"].endswith(".webm"))
+        self.assertEqual(options["format"], "b")
 
     def test_javascriptcore_provider_registers_and_loads_bundled_solver(self):
         from yt_dlp import YoutubeDL
