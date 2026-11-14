@@ -332,7 +332,18 @@ final class DownloadModel {
                 guard let file = result.file else {
                     throw AppFailure(message: "yt-dlp 다운로드 결과 파일이 없습니다.")
                 }
-                let output = URL(fileURLWithPath: file)
+                let downloadedFile = URL(fileURLWithPath: file)
+                let output: URL
+                if let audio = result.merge_audio {
+                    phaseLabel = "영상과 오디오를 병합하는 중…"
+                    appendLog("영상과 오디오를 재인코딩 없이 병합")
+                    publishActivity(force: true)
+                    output = folder.appendingPathComponent("merged").appendingPathExtension(result.merge_extension ?? "mp4")
+                    try await MediaAssembler.assemble(video: downloadedFile, audio: URL(fileURLWithPath: audio),
+                                                      destination: output)
+                } else {
+                    output = downloadedFile
+                }
                 try Task.checkCancellation()
                 let storedFormat: SaveFormat = result.media_type == "audio" ? .m4a : .mp4
                 let item = try MediaLibrary.commit(source: output,

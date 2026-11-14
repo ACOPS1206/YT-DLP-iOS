@@ -30,9 +30,10 @@ class CommandTests(unittest.TestCase):
         return command_options(parse_options, build_arguments(request))
 
     def test_video_extension_and_quality_are_cli_filters(self):
-        self.assertEqual(self.options({"format": "MP4", "quality": 720,
-                                      "output_extension": ".MP4"})["format"],
-                         "b[ext=mp4][height<=720]")
+        selector = self.options({"format": "MP4", "quality": 720,
+                                 "output_extension": ".MP4"})["format"]
+        self.assertIn("[height<=720]+ba", selector)
+        self.assertTrue(selector.endswith("/b[ext=mp4][height<=720]"))
 
     def test_audio_selects_original_not_conversion(self):
         options = self.options({"format": "M4A", "output_extension": "webm"})
@@ -127,9 +128,14 @@ class ActualDownloaderTests(unittest.TestCase):
                                      "vcodec": "none" if audio else "avc1", "acodec": "mp4a",
                                      "height": None if audio else 720}]}
                 if split:
-                    info["formats"][0]["acodec"] = "none"
-                    info["formats"].append({"format_id": "audio", "url": f"{base}/{source.name}",
-                                            "ext": "m4a", "protocol": "http", "vcodec": "none", "acodec": "mp4a"})
+                    (root / "high.mp4").write_bytes(b"1080p video")
+                    (root / "audio.m4a").write_bytes(b"AAC audio")
+                    info["formats"].extend([
+                        {"format_id": "high", "url": f"{base}/high.mp4", "ext": "mp4",
+                         "protocol": "http", "vcodec": "av01", "acodec": "none", "height": 1080},
+                        {"format_id": "audio", "url": f"{base}/audio.m4a", "ext": "m4a",
+                         "protocol": "http", "vcodec": "none", "acodec": "mp4a"},
+                    ])
                 if subtitles:
                     (root / "subtitle.vtt").write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n")
                     info["subtitles"] = {"en": [{"ext": "vtt", "url": f"{base}/subtitle.vtt"}]}
@@ -150,7 +156,11 @@ class ActualDownloaderTests(unittest.TestCase):
                         "directory": str(root / "output")})))
                 self.assertEqual(calls, [True], "Do not extract the same URL twice")
                 if result["ok"]:
-                    self.assertEqual(pathlib.Path(result["file"]).read_bytes(), source.read_bytes())
+                    if result.get("merge_audio"):
+                        self.assertEqual(pathlib.Path(result["file"]).read_bytes(), b"1080p video")
+                        self.assertEqual(pathlib.Path(result["merge_audio"]).read_bytes(), b"AAC audio")
+                    else:
+                        self.assertEqual(pathlib.Path(result["file"]).read_bytes(), source.read_bytes())
                     self.assertEqual(result["media_type"], "audio" if audio else "video")
                     self.assertTrue(any(e.get("progress") == 1.0 for e in events))
                 if result["ok"] and subtitles:
@@ -183,8 +193,23 @@ class ActualDownloaderTests(unittest.TestCase):
         result = self.download_fixture(subtitles=True)
         self.assertTrue(result["ok"], result)
 
-    def test_split_command_returns_explicit_merge_error(self):
-        result = self.download_fixture(custom="-f bv+ba", split=True)
+    def test_best_quality_downloads_split_1080p_over_combined_720p(self):
+        result = self.download_fixture(ceiling=0, split=True, subtitles=True)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["merge_extension"], "mp4")
+
+    def test_quality_ceiling_still_selects_combined_720p(self):
+        result = self.download_fixture(ceiling=720, split=True)
+        self.assertTrue(result["ok"], result)
+        self.assertNotIn("merge_audio", result)
+
+    def test_custom_split_command_uses_same_download_path(self):
+        result = self.download_fixture(custom="-f bv+ba --merge-output-format mov", split=True)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["merge_extension"], "mov")
+
+    def test_unsupported_merge_container_fails_explicitly(self):
+        result = self.download_fixture(custom="-f bv+ba --merge-output-format mkv", split=True)
         self.assertFalse(result["ok"])
         self.assertIn("병합", result["error"])
 
@@ -222,7 +247,7 @@ class ActualDownloaderTests(unittest.TestCase):
         warning = next(event for event in events if event.get("level") == "warning")
         self.assertIn("[링크]", warning["message"])
         self.assertNotIn("secret", json.dumps(events))
-        self.assertEqual(options["format"], "b")
+        self.assertTrue(options["format"].startswith("bv*"))
 
     def test_javascriptcore_provider_registers_and_loads_bundled_solver(self):
         from yt_dlp import YoutubeDL

@@ -72,6 +72,8 @@ struct EngineResult: Decodable {
     let info: MediaInfo?
     let media_type: String?
     let file: String?
+    let merge_audio: String?
+    let merge_extension: String?
     let subtitle: String?
     let version: String?
     let updated: Bool?

@@ -56,9 +56,20 @@ def build_arguments(request):
     selector = "b" if kind == "MP4" else "ba"
     if extension:
         selector += f"[ext={extension}]"
-    if kind == "MP4" and ceiling:
-        selector += f"[height<={ceiling}]"
+    if kind == "MP4":
+        height = f"[height<={ceiling}]" if ceiling else ""
+        selector += height
+        if extension in ("", "mp4", "mov"):
+            video_ext = "mp4|mov" if extension == "mov" else "mp4"
+            video_kind = "bv" if extension == "mov" else "bv*"
+            native = "[protocol~='^(https?|http_dash_segments|m3u8_native)$']"
+            video = (f"{video_kind}[ext~='^({video_ext})$'][vcodec~='^(avc[13]|h26[45]|hvc1|hev1|av01)']"
+                     f"{native}{height}")
+            audio = f"ba[ext=m4a][acodec~='^(mp4a|aac|alac)']{native}"
+            selector = f"{video}+{audio}/{selector}"
     arguments = ["-f", selector]
+    if kind == "MP4" and extension == "mov":
+        arguments += ["--merge-output-format", "mov"]
     if request.get("download_subtitles"):
         arguments += ["--write-subs", "--sub-langs", request.get("subtitle_languages") or "ko,en"]
         if request.get("automatic_subtitles", True):
@@ -80,7 +91,7 @@ def command_options(parse_options, arguments):
     # Embedded CPython cannot spawn desktop tools. Fail before any transfer.
     if any(pp.get("key", "").startswith(("FFmpeg", "Exec"))
            for pp in options.get("postprocessors", [])) or options.get("external_downloader"):
-        raise ValueError("이 명령은 FFmpeg 또는 외부 실행 파일이 필요합니다. 현재 iOS 엔진은 원본 파일 저장만 지원합니다.")
+        raise ValueError("이 명령은 FFmpeg 또는 외부 실행 파일이 필요합니다. 현재 iOS 엔진에서 이 후처리는 지원하지 않습니다.")
     if getattr(parsed.options, "update_self", False):
         raise ValueError("엔진 업데이트는 설정의 업데이트 버튼을 사용해 주세요.")
     return options
@@ -310,8 +321,19 @@ def run(request_json):
         user_filter = options.get("match_filter")
         def match_filter(info, *, incomplete=False):
             checkpoint()
-            if info.get("requested_formats"):
-                raise ValueError("이 선택은 영상·오디오 병합이 필요합니다. -f best 또는 단일 원본 포맷을 선택해 주세요.")
+            tracks = info.get("requested_formats") or []
+            if tracks:
+                if (len(tracks) != 2
+                        or tracks[0].get("ext") not in ("mp4", "mov", "m4v")
+                        or tracks[0].get("acodec") != "none"
+                        or not re.match(r"^(avc[13]|h26[45]|hvc1|hev1|av01)", tracks[0].get("vcodec") or "")
+                        or tracks[1].get("ext") not in ("m4a", "mp4")
+                        or tracks[1].get("vcodec") != "none"
+                        or not re.match(r"^(mp4a|aac|alac)", tracks[1].get("acodec") or "")
+                        or any(track.get("protocol") not in ("http", "https", "http_dash_segments", "m3u8_native")
+                               for track in tracks)
+                        or options.get("merge_output_format") not in (None, "mp4", "mov")):
+                    raise ValueError("iOS 병합에는 MP4/MOV 영상 트랙과 호환 M4A 오디오 트랙이 필요합니다.")
             if info.get("is_live"):
                 raise ValueError("진행 중인 라이브 영상은 지원하지 않습니다.")
             if (info.get("age_limit") or 0) >= 18:
@@ -327,6 +349,9 @@ def run(request_json):
         folder = request.get("directory", "")
         if downloading:
             os.makedirs(folder, exist_ok=True)
+            # Let yt-dlp download the selected tracks individually for AVFoundation.
+            options["ffmpeg_location"] = os.path.join(folder, ".ffmpeg-unavailable")
+            options["compat_opts"].add("no-direct-merge")
             # App owns staging; CLI -o/-P must not move or overwrite unrelated files.
             options["paths"] = {"home": folder, "temp": folder}
             options["outtmpl"] = {"default": os.path.join(folder, "media.%(ext)s")}
@@ -334,13 +359,28 @@ def run(request_json):
         with YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=downloading)
             checkpoint()
+            if downloading and ydl._download_retcode:
+                raise ValueError("yt-dlp가 다운로드를 완료하지 못했습니다. 자세한 내용은 로그를 확인해 주세요.")
             if not info or info.get("_type") in ("playlist", "multi_video"):
                 raise ValueError("한 개의 동영상 링크를 입력해 주세요.")
             summary = media_info(info)
             emit("metadata", info=summary)
             result = {"ok": True, "info": summary, "version": __version__}
             if downloading:
-                result["file"] = _single_download_file(folder, info, ydl)
+                downloads = info.get("requested_downloads") or []
+                tracks = downloads[0].get("requested_formats") if len(downloads) == 1 else None
+                if tracks:
+                    paths = [track.get("filepath") for track in tracks]
+                    if not all(path and os.path.isfile(path) and
+                               os.path.commonpath((os.path.realpath(folder), os.path.realpath(path))) == os.path.realpath(folder)
+                               for path in paths):
+                        raise ValueError("병합에 필요한 영상 또는 오디오 파일이 없습니다.")
+                    result["file"], result["merge_audio"] = paths
+                    result["merge_extension"] = options.get("merge_output_format") or "mp4"
+                else:
+                    result["file"] = _single_download_file(folder, info, ydl)
+                if info.get("height"):
+                    log(f'선택된 영상: {info["height"]}p · {info.get("format_id", "")}')
                 result["media_type"] = "audio" if info.get("vcodec") == "none" else "video"
                 subtitles = [entry.get("filepath") for entry in (info.get("requested_subtitles") or {}).values()
                              if entry.get("filepath") and os.path.isfile(entry["filepath"])]

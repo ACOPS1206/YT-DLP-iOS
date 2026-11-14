@@ -330,7 +330,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .disabled(model.isBusy)
 
-            Text("선택 옵션을 yt-dlp 명령 인수로 실행합니다. 확장자는 변환 없이 해당 원본을 선택하며, 화질은 상한입니다. 기본 동영상 모드는 영상·소리가 합쳐진 원본만 사용하므로 분리 스트림 전용 고화질은 지원하지 않습니다. FFmpeg 병합·변환과 외부 프로그램 실행은 지원하지 않습니다. 저장 위치와 파일명은 앱이 관리합니다.")
+            Text("화질은 상한입니다. 자동·MP4·MOV는 호환되는 고화질 영상과 오디오를 재인코딩 없이 병합할 수 있습니다. 선택된 해상도는 다운로드 로그에서 확인할 수 있습니다.")
             .font(.caption)
             .foregroundStyle(.secondary)
         }
