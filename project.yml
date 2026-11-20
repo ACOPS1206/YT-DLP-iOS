@@ -3,6 +3,10 @@ options:
   bundleIdPrefix: dev.acops
   deploymentTarget:
     iOS: "26.0"
+  # Treat Icon Composer packages as single resources in XcodeGen.
+  fileTypes:
+    icon:
+      file: true
 settings:
   base:
     SWIFT_VERSION: "5.0"
