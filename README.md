@@ -1,6 +1,10 @@
-# yt-dlp GUI · iOS 0.3.0
+<p style="text-align: center">
+<img src="icon.png" style="width: 200px">
+</p>
 
-iOS 26용 SwiftUI 앱입니다. Liquid Glass 카드, 시스템 탭·도구 막대와 SF Symbols를 사용해 표준 iOS 앱 구조를 따릅니다.
+<h1 style="text-align: center">yt-dlp GUI · iOS 0.3.0</h1>
+
+<p style="text-align: center">iOS 26용 SwiftUI 앱입니다. Liquid Glass 카드, 시스템 탭·도구 막대와 SF Symbols를 사용해 표준 iOS 앱 구조를 따릅니다.</p>
 
 ## 포함된 기능
 
